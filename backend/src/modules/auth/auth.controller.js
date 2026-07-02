@@ -1,0 +1,107 @@
+import db from "../../database/db_connector.js";
+import {roleEnum, users} from "../../database/schema.js";
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import {eq} from "drizzle-orm";
+
+export const register = async (req, res) => {
+    try {
+        // Destructuring the request body
+        const {username, emailId, password} = req.body;
+
+        // Salting and hashing the password
+        const salt = await bcrypt.genSalt(10);
+        const hashedPassword = await bcrypt.hash(password, salt);
+
+        // Inserting the new user into the database
+        const [newUser] = await db.insert(users).values({ // Array Destructuring to get the first element of the returned array.
+            username,
+            emailId,
+            hashedPassword
+        }).returning({ // returns an array of object/objects.
+            userId: users.userId, // returning the newly generated userId for our JWT payload.
+            username: users.username,
+            role: users.role
+        });
+
+        // Creating and signing a JWT.
+        const token = jwt.sign(
+            {userId: newUser.userId, role: newUser.role},
+            process.env.JWT_SECRET_KEY,
+            {expiresIn: '1d'}
+        );
+
+        res.cookie("token", token, {
+            httpOnly: true, // prevents JavaScript from accessing the cookie, enhancing security against XSS attacks
+            secure: process.env.NODE_ENV === "production", // 'secure' attribute ensures the cookie is sent over HTTPS only. It's set to true in production for added security.
+            sameSite: "strict", // cookie will only be sent with same-site requests (not with any cross-site requests), enhancing CSRF protection.
+            maxAge: 24 * 60 * 60 * 1000 // 1 day in milliseconds
+        });
+
+        res.status(201).json({message: "Registration successful", user: newUser});
+    }
+    catch (error) {
+        if (error.code === "23505") { // Unique violation error code for PostgreSQL
+            res.status(400).json({error: "Username or Email-ID already exists"});
+        } 
+        else {
+            console.error("Error during registration:", error);
+            res.status(500).json({error: "Internal Server Error"});
+        }
+    }
+};
+
+export const login = async (req, res) => {
+    try {
+        const {emailId, password} = req.body;
+
+        const [user] = await db.select(users).where(eq(emailId, users.emailId));
+        if (!user) {
+            return res.status(401).json({error: "Invalid credentials"});
+        }
+
+        const isPasswordMatch = await bcrypt.compare(password, user.hashedPassword);
+        if (!isPasswordMatch) {
+            return res.status(401).json({error: "Invalid credentials"});
+        }
+
+        // If the user exists and the password matches, create a JWT token
+        const token = jwt.sign(
+            {userId: user.userId, role: user.role},
+            process.env.JWT_SECRET_KEY,
+            {expiresIn: '1d'}
+        );
+
+        // Attaching the token to an HTTP-only cookie
+        res.cookie("token", token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "strict",
+            maxAge: 24 * 60 * 60 * 1000 // 1 day in ms
+        })
+
+        res.status(200).json({
+            message: "Login successful",
+            user: {
+                userId: user.userId,
+                username: user.username,
+                role: user.role
+            }
+        });
+    }
+    catch (error) {
+        console.error("Error during login:", error);
+        res.status(500).json({error: "Internal Server Error"});
+    }
+};
+
+export const logout = (req, res) => {
+    // Clearing the cookie by name and matching the security attributes.
+    res.clearCookie("token", {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "strict",
+    });
+
+    res.status(200).json({message: "Logout successful"});
+};

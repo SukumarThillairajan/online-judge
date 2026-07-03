@@ -8,6 +8,20 @@
       "when": 1783041801881,
       "tag": "0000_giant_living_tribunal",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783060253554,
+      "tag": "0001_hard_human_fly",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783061314042,
+      "tag": "0002_acoustic_blue_shield",
+      "breakpoints": true
     }
   ]
 }

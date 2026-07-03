@@ -9,6 +9,10 @@ export const register = async (req, res) => {
         // Destructuring the request body
         const {username, emailId, password} = req.body;
 
+        if (!username || !emailId || !password) {
+            return res.status(400).json({error: "All fields are required"});
+        }
+
         // Salting and hashing the password
         const salt = await bcrypt.genSalt(10);
         const hashedPassword = await bcrypt.hash(password, salt);
@@ -47,7 +51,7 @@ export const register = async (req, res) => {
         } 
         else {
             console.error("Error during registration:", error);
-            res.status(500).json({error: "Internal Server Error"});
+            res.status(500).json({error: "Internal Server Error during Registration"});
         }
     }
 };
@@ -55,6 +59,10 @@ export const register = async (req, res) => {
 export const login = async (req, res) => {
     try {
         const {emailId, password} = req.body;
+
+        if (!emailId || !password) {
+            return res.status(400).json({error: "All fields are required"});
+        }
 
         const [user] = await db.select().from(users).where(eq(emailId, users.emailId));
         if (!user) {
@@ -92,7 +100,7 @@ export const login = async (req, res) => {
     }
     catch (error) {
         console.error("Error during login:", error);
-        res.status(500).json({error: "Internal Server Error"});
+        res.status(500).json({error: "Internal Server Error during Login"});
     }
 };
 

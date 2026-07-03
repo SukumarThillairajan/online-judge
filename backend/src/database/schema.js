@@ -1,4 +1,4 @@
-import {pgEnum, pgTable, uuid, varchar, timestamp} from 'drizzle-orm/pg-core';
+import {pgEnum, pgTable, uuid, varchar, timestamp, text, jsonb, index} from 'drizzle-orm/pg-core';
 
 // Declaring and exporting the Role Enum for Role-Based Access Control (RBAC).
 export const roleEnum = pgEnum("role", ["ADMIN", "USER"]);
@@ -18,3 +18,41 @@ export const users = pgTable("users", { // here we are using camelCase for the J
 
     createdAt: timestamp("created_at").defaultNow().notNull() // By dafault, the current timestamp will be set when a new user is created.
 });
+
+export const difficultyEnum = pgEnum("difficulty", ["Easy", "Medium", "Hard"]);
+
+export const problems = pgTable("problems", {
+
+    problemId: uuid("problem_id").primaryKey().defaultRandom(),
+
+    problemName: varchar("problem_name", {length: 255}).notNull().unique(),
+
+    difficulty: difficultyEnum("difficulty").notNull(),
+
+    statement: text("statement").notNull(),
+
+    sampleTestCases: jsonb("sample_test_cases").notNull() // storing the sample test cases as a JSON object, allowing more flexibility for V2.
+}, 
+(table) => {
+    return { // by returning a named object for the index, we can easily reference them later, without breaking JS' scoping rules.
+        difficultyIndex: index("difficulty_index").on(table.difficulty)
+    };
+}
+);
+
+export const testCases = pgTable("test_cases", {
+
+    testCaseId: uuid("test_case_id").primaryKey().defaultRandom(),
+
+    problemId: uuid("problem_id").references(() => problems.problemId).notNull(), // Foreign Key.
+
+    input: text("input").notNull(),
+
+    output: text("output").notNull()
+}, 
+(table) => {
+    return {
+        problemIdIndex: index("problem_id_index").on(table.problemId)
+    };
+}
+);

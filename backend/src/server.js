@@ -1,8 +1,10 @@
 import express from 'express';
 import dotenv from 'dotenv';
+import cookieParser from 'cookie-parser';
 
-import authRoutes from "./modules/auth/auth.routes.js";
 import {testDbConnection} from "./database/db_connector.js";
+import authRoutes from "./modules/auth/auth.routes.js";
+import problemRoutes from "./modules/problems/problem.routes.js";
 
 // Loading the environment variables from the .env file into the process.env object
 dotenv.config();
@@ -13,9 +15,11 @@ const PORT = process.env.PORT || 3000; // Defaulting to the standard Node.js/Exp
 
 // Global Middlewares
 app.use(express.json()); // Middleware to parse incoming JSON payloads. Without this req.body will be undefined for JSON requests.
+app.use(cookieParser());
 
 // Router Mounting
 app.use("/api/auth", authRoutes); // any request starting with /api/auth will be handed off to authRoutes
+app.use("/api/problems", problemRoutes);
 
 // Base routes (Health check)
 app.get("/", (req, res) => {

@@ -7,7 +7,7 @@ import {eq} from "drizzle-orm";
 export const register = async (req, res) => {
     try {
         // Destructuring the request body
-        const {username, emailId, password} = req.body;
+        const {username, emailId, password, role} = req.body;
 
         if (!username || !emailId || !password) {
             return res.status(400).json({error: "All fields are required"});
@@ -21,17 +21,18 @@ export const register = async (req, res) => {
         const [newUser] = await db.insert(users).values({ // Array Destructuring to get the first element of the returned array.
             username,
             emailId,
-            hashedPassword
+            hashedPassword,
+            role: role || roleEnum.user
         }).returning({ // returns an array of object/objects.
             userId: users.userId, // returning the newly generated userId for our JWT payload.
             username: users.username,
-            role: users.role
+            role: users.role,
         });
 
         // Creating and signing a JWT.
         const token = jwt.sign(
             {userId: newUser.userId, role: newUser.role},
-            process.env.JWT_SECRET,
+            process.env.JWT_SECRET_KEY,
             {expiresIn: '1d'}
         );
 
@@ -77,7 +78,7 @@ export const login = async (req, res) => {
         // If the user exists and the password matches, create a JWT token
         const token = jwt.sign(
             {userId: user.userId, role: user.role},
-            process.env.JWT_SECRET,
+            process.env.JWT_SECRET_KEY,
             {expiresIn: '1d'}
         );
 

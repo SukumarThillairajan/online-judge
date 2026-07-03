@@ -1,4 +1,4 @@
-import db from "../../database/db_connector.js";
+import {db} from "../../database/db_connector.js";
 import {roleEnum, users} from "../../database/schema.js";
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -27,7 +27,7 @@ export const register = async (req, res) => {
         // Creating and signing a JWT.
         const token = jwt.sign(
             {userId: newUser.userId, role: newUser.role},
-            process.env.JWT_SECRET_KEY,
+            process.env.JWT_SECRET,
             {expiresIn: '1d'}
         );
 
@@ -41,7 +41,8 @@ export const register = async (req, res) => {
         res.status(201).json({message: "Registration successful", user: newUser});
     }
     catch (error) {
-        if (error.code === "23505") { // Unique violation error code for PostgreSQL
+        // Unique violation error code for PostgreSQL
+        if (error.code === "23505" || error.cause?.code === "23505") { // "Optional Chaining" is used to safely access nested object properties. If error.cause is undefined, it won't throw an error.
             res.status(400).json({error: "Username or Email-ID already exists"});
         } 
         else {
@@ -55,7 +56,7 @@ export const login = async (req, res) => {
     try {
         const {emailId, password} = req.body;
 
-        const [user] = await db.select(users).where(eq(emailId, users.emailId));
+        const [user] = await db.select().from(users).where(eq(emailId, users.emailId));
         if (!user) {
             return res.status(401).json({error: "Invalid credentials"});
         }
@@ -68,7 +69,7 @@ export const login = async (req, res) => {
         // If the user exists and the password matches, create a JWT token
         const token = jwt.sign(
             {userId: user.userId, role: user.role},
-            process.env.JWT_SECRET_KEY,
+            process.env.JWT_SECRET,
             {expiresIn: '1d'}
         );
 

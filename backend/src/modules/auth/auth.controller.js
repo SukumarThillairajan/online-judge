@@ -10,7 +10,7 @@ export const register = async (req, res) => {
         const {username, emailId, password, role} = req.body;
 
         if (!username || !emailId || !password) {
-            return res.status(400).json({error: "All fields are required"});
+            return res.status(400).json({success: false, error: "All fields are required"});
         }
 
         // Salting and hashing the password
@@ -43,16 +43,16 @@ export const register = async (req, res) => {
             maxAge: 24 * 60 * 60 * 1000 // 1 day in milliseconds
         });
 
-        res.status(201).json({message: "Registration successful", user: newUser});
+        res.status(201).json({success: true,message: "Registration successful", user: newUser});
     }
     catch (error) {
         // Unique violation error code for PostgreSQL
         if (error.code === "23505" || error.cause?.code === "23505") { // "Optional Chaining" is used to safely access nested object properties. If error.cause is undefined, it won't throw an error.
-            res.status(400).json({error: "Username or Email-ID already exists"});
+            res.status(400).json({success: false, error: "Username or Email-ID already exists"});
         } 
         else {
             console.error("Error during registration:", error);
-            res.status(500).json({error: "Internal Server Error during Registration"});
+            res.status(500).json({success: false, error: "Internal Server Error during Registration"});
         }
     }
 };
@@ -62,17 +62,17 @@ export const login = async (req, res) => {
         const {emailId, password} = req.body;
 
         if (!emailId || !password) {
-            return res.status(400).json({error: "All fields are required"});
+            return res.status(400).json({success: false, error: "All fields are required"});
         }
 
         const [user] = await db.select().from(users).where(eq(emailId, users.emailId));
         if (!user) {
-            return res.status(401).json({error: "Invalid credentials"});
+            return res.status(401).json({success: false, error: "Invalid credentials"});
         }
 
         const isPasswordMatch = await bcrypt.compare(password, user.hashedPassword);
         if (!isPasswordMatch) {
-            return res.status(401).json({error: "Invalid credentials"});
+            return res.status(401).json({success: false, error: "Invalid credentials"});
         }
 
         // If the user exists and the password matches, create a JWT token
@@ -91,6 +91,7 @@ export const login = async (req, res) => {
         })
 
         res.status(200).json({
+            success: true,
             message: "Login successful",
             user: {
                 userId: user.userId,
@@ -101,7 +102,7 @@ export const login = async (req, res) => {
     }
     catch (error) {
         console.error("Error during login:", error);
-        res.status(500).json({error: "Internal Server Error during Login"});
+        res.status(500).json({success: false, error: "Internal Server Error during Login"});
     }
 };
 
@@ -113,5 +114,5 @@ export const logout = (req, res) => {
         sameSite: "strict",
     });
 
-    res.status(200).json({message: "Logout successful"});
+    res.status(200).json({success: true,message: "Logout successful"});
 };

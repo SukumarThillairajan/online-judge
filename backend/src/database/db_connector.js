@@ -5,6 +5,12 @@ import {drizzle} from 'drizzle-orm/node-postgres';
 // Loads the variable from the .env file into the Node.js' process.env object
 dotenv.config();
 
+// Validating that the DATABASE_URL is set.
+if (!process.env.DATABASE_URL) {
+    console.error("FATAL ERROR: DATABASE_URL is not defined in the environment variables.");
+    process.exit(1); // Exit the application with a failure code.
+}
+
 // Initializing the PostgreSQL connection pool
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
@@ -26,5 +32,15 @@ export const testDbConnection = async () => {
     }
     catch (error) {
         console.error("Database connection failed: ", error.message);
+        process.exit(1); // Exit the application if the initial connection fails.
     }
 }
+
+// Graceful shutdown
+// process.on() is used to attach event listeners to the 'process' object (a global object representing the current Node.js process).
+process.on('SIGINT', async () => { // writing a callback function (event listener) to close the DB pool, once "Ctrl + C" (SIGINT) is hit in the terminal (i.e, the server is shutdown).
+    console.log('SIGINT signal received: closing DB pool');
+    await pool.end();
+    console.log('DB pool has been closed');
+    process.exit(0);
+});

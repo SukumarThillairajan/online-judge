@@ -44,7 +44,7 @@ export const testCases = pgTable("test_cases", {
 
     testCaseId: uuid("test_case_id").primaryKey().defaultRandom(),
 
-    problemId: uuid("problem_id").references(() => problems.problemId).notNull(), // Foreign Key.
+    problemId: uuid("problem_id").references(() => problems.problemId, {onDelete: "cascade"}).notNull(), // Foreign Key with ON DELETE CASCADE
 
     input: text("input").notNull(),
 

@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import jwt, {TokenExpiredError, JsonWebTokenError} from 'jsonwebtoken';
 
 // Verifies the JWT to ensure that the user is logged-in.
 // Only if the token is valid, requireAuth middleware attaches it to the request object.
@@ -22,10 +22,27 @@ export const requireAuth = (req, res, next) => { // 'next' is a callback functio
         next();
     }
     catch (error) {
-        console.error("JWT Verification Error: ", error);
-        return res.status(401).json({
+        if (error.name === "TokenExpiredError") {
+            console.error("JWT Verification Error: Token has expired.");
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized: Token has expired. Please log in again."
+            });
+        }
+
+        if (error.name === "JsonWebTokenError") {
+            console.warn(`JWT Verification Error: Malformed/Tampered JWT attempted from IP: ${req.ip}`);
+            return res.status(401).json({
+                success: false,
+                message: "Unauthorized: Invalid token."
+            });
+        }
+
+        // For other errors
+        console.error("Unexpected JWT error: ", error);
+        return res.status(500).json({
             success: false,
-            message: "Unauthorized: Invalid or expired token"
+            message: "Internal Server Error during JWT verification."
         });
     }
 };
@@ -34,6 +51,7 @@ export const requireAuth = (req, res, next) => { // 'next' is a callback functio
 export const requireAdmin = (req, res, next) => {
     try {
         if (!req.user || req.user.role !== "ADMIN") {
+            console.warn(`User ${req.user.userId} attempted unauthenticated/unauthorized access to Admin routes. IP: ${req.ip}`);
             return res.status(403).json({
                 success: false,
                 message: "Forbidden: You do not have the Admin privileges"

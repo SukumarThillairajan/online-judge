@@ -9,6 +9,12 @@ import problemRoutes from "./modules/problems/problem.routes.js";
 // Loading the environment variables from the .env file into the process.env object
 dotenv.config();
 
+// Validating that the JWT_SECRET_KEY is set.
+if (!process.env.JWT_SECRET_KEY) {
+    console.error("FATAL ERROR: JWT_SECRET_KEY is not defined in the environment variables.");
+    process.exit(1); // Exit the application with a failure code.
+}
+
 // Initializing the Express application
 const app = express();
 const PORT = process.env.PORT || 3000; // Defaulting to the standard Node.js/Express.js server port 3000.

@@ -104,6 +104,46 @@ export const createProblem = async(req, res) => {
     }
 };
 
+// Adds an additional hidden test case to a particular problem
+export const addHiddenTestCases = async(req, res) => {
+    try {
+        const {id} = req.params; // problemId from the URL
+        const {input, output} = req.body;
+
+        // Validating the request
+        if (!input || !output) {
+            return res.status(400).json({
+                success: false,
+                message: "Both Input and Output are required to create a test case."
+            });
+        }
+
+        // Verifying that the problem actually exists
+        const [existingProblem] = await db.select({problemId: problems.problemId}).from(problems).where(eq(id, problems.problemId));
+        if (!existingProblem) {
+            return res.status(404).json({
+                success: false,
+                message: "Problem not found. Cannot add a test case to a non-existent problem."
+            });
+        }
+
+        // Inserting the new test case
+        await db.insert(testCases).values({problemId: id, input: input, output: output});
+
+        return res.status(201).json({
+            success: true,
+            message: "New hidden test case added successfully!"
+        });
+    }
+    catch(error) {
+        console.error("Error adding a new hidden test case: ", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal Server Error while adding a new hidden test case."
+        });
+    }
+}
+
 // Deletes and problem and its hidden test cases
 export const deleteProblem = async(req, res) => {
     try {

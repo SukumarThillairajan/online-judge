@@ -4,6 +4,48 @@ import {eq} from 'drizzle-orm';
 import {v4 as uuidv4} from 'uuid';
 import {submissionQueue} from "../../queues/submissionQueue.js";
 
+export const runCustomCode = async(req, res) => {
+    try {
+        const {code, language, customInput} = req.body;
+
+        // Validation
+        if (!code || !language) {
+            return res.status(400).json({
+                success: false, 
+                message: "Missing required fields: code, or language."
+            });
+        }
+        if (!languageEnum.enumValues.includes(language)) {
+            return res.status(400).json({
+                success: false,
+                message: `Invalid language: '${language}'. Supported languages are: ${languageEnum.enumValues.join(', ')}`
+            });
+        }
+
+        const secureJobId = uuidv4();
+        const job = await submissionQueue.add("run-code", {
+            code,
+            language,
+            customInput: customInput || "" // passing the custom stdin, defaulting to empty string
+        }, {
+            jobId: secureJobId // forcing Redis to use our uuidv4 as the jobId, instead of it's default sequential job ID.
+        });
+
+        return res.status(200).json({
+            status: "Executing",
+            message: "Run job queued successfully.",
+            jobId: job.id, // returning the job ID for polling
+        });
+    }
+    catch(error) {
+        console.error("Error queueing run-code job:", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error: Could not queue the run-code job"
+        });
+    }
+};
+
 export const createSubmission = async(req, res) => {
     const {problemId, code, language} = req.body;
     const userId = req.user.userId; // Extracted from requireAuth middleware (JWT cookie)
@@ -32,7 +74,7 @@ export const createSubmission = async(req, res) => {
         }
 
         // 2. Saving the submission to the database
-        [newSubmission] = await db.insert(submissions).values({
+        const [newSubmission] = await db.insert(submissions).values({
             userId,
             problemId,
             code,
@@ -42,6 +84,9 @@ export const createSubmission = async(req, res) => {
         // 3. Adding the job to the evaluation queue
         await submissionQueue.add("evaluate-code", {
             submissionId: newSubmission.submissionId,
+            problemId: problemId,
+            code: code,
+            language: language
         });
 
         return res.status(201).json({
@@ -77,48 +122,6 @@ export const createSubmission = async(req, res) => {
         return res.status(500).json({
             success: false,
             message: "Internal server error creating submission."
-        });
-    }
-};
-
-export const runCustomCode = async(req, res) => {
-    try {
-        const {code, language, customInput} = req.body;
-
-        // Validation
-        if (!code || !language) {
-            return res.status(400).json({
-                success: false, 
-                message: "Missing required fields: code, or language."
-            });
-        }
-        if (!languageEnum.enumValues.includes(language)) {
-            return res.status(400).json({
-                success: false,
-                message: `Invalid language: '${language}'. Supported languages are: ${languageEnum.enumValues.join(', ')}`
-            });
-        }
-
-        const secureJobId = uuidv4();
-        const job = await submmissionQueue("run-code", {
-            code,
-            language,
-            customInput: customInput || "" // passing the custom stdin, defaulting to empty string
-        }, {
-            jobId: secureJobId // forcing Redis to use our uuidv4 as the jobId, instead of it's default sequential job ID.
-        });
-
-        return res.status(200).json({
-            status: "Executing",
-            message: "Run job queued successfully.",
-            jobId: job.id // returning the job ID for polling
-        });
-    }
-    catch(error) {
-        console.error("Error queueing run-code job:", error);
-        return res.status(500).json({
-            success: false,
-            message: "Internal server error: Could not queue the run-code job"
         });
     }
 };

@@ -7,7 +7,7 @@ import fs from 'fs/promises';
 // Promisifying 'exec' which is by default callback-based into Promise or Async-Await -based.
 const execPromise = util.promisify(exec);
 
-const languageConfigs = {
+export const languageConfigs = {
     c: {
         fileName: "main.c",
         dockerImage: "gcc-alpine",

@@ -1,6 +1,6 @@
 import express from 'express';
 
-import {requireAuth} from "../../middlewares/requireAuth.js";
+import {requireAuth} from "../../middlewares/auth.middleware.js";
 
 import {createSubmission, runCustomCode} from "./submission.controller.js";
 

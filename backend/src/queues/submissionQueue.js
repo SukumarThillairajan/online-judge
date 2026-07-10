@@ -18,7 +18,7 @@ if (!process.env.REDIS_PORT) {
 export const redisConnection = new Redis({
     host: process.env.REDIS_HOST,
     port: process.env.REDIS_PORT,
-    maxRetriesPerRequest: 3, // Prevent indefinite retries on connection loss
+    maxRetriesPerRequest: null, // BullMQ requires this to be null to handle blocking commands correctly.
     enableReadyCheck: true, // ioredis will check the status of the Redis server and emit a ready event when the server is able to process commands.
 });
 

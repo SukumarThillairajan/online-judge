@@ -13,7 +13,7 @@ const workerOptions = {
     lockDuration: 30000 // Worker must renew lock every 30s to prove it hasn't crashed
 };
 
-export const submissionWorker = new Worker("submission-queue", async (job) => {
+export const submissionWorker = new Worker("submissionQueue", async (job) => {
     console.log(`Worker picked up job ${job.id} of type: ${job.name}`);
 
     try {
@@ -41,7 +41,7 @@ export const submissionWorker = new Worker("submission-queue", async (job) => {
             await db.update(submissions).set({
                 verdict: result.verdict,
                 details: result
-            }).where(eq(submissions.id, submissionId));
+            }).where(eq(submissions.submissionId, submissionId));
 
             return result;
         }
@@ -54,7 +54,7 @@ export const submissionWorker = new Worker("submission-queue", async (job) => {
             await db.update(submissions).set({
                 verdict: "Internal System Error",
                 details: {error: error.message}
-            }).where(eq(submissions.id, job.data.submissionId));
+            }).where(eq(submissions.submissionId, job.data.submissionId));
         }
 
         // Rethrowing tells BullMQ that this job technically failed.

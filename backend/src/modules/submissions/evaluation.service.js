@@ -4,64 +4,10 @@ import {spawn} from 'child_process';
 import os from 'os';
 import crypto from 'crypto';
 
-// Configuring supported languages and Docker images
-const languageConfigs = {
-    c: {
-        image: "gcc-alpine",
-        fileName: "main.c",
-        compile: {
-            command: "gcc",
-            args: ["main.c", "-o", "main"]
-        },
-        run: {
-            command: "./main",
-            args: []
-        }
-    },
-    cpp: {
-        image: "gcc-alpine",
-        fileName: "main.cpp",
-        compile: {
-            command: "g++",
-            args: ["main.cpp", "-o", "main"]
-        },
-        run: {
-            command: "./main",
-            args: []
-        }
-    },
-    java: {
-        image: "amazoncorretto:21-alpine",
-        fileName: "Main.java",
-        compile: {
-            command: "javac",
-            args: ["Main.java"]
-        },
-        run: {
-            command: "java",
-            args: ["Main"]
-        }
-    },
-    python: {
-        image: "python:3.11-slim",
-        fileName: "main.py",
-        run: {
-            command: "python",
-            args: ["main.py"]
-        }
-    },
-    javascript: {
-        image: "node:20-alpine",
-        fileName: "main.js",
-        run: {
-            command: "node",
-            args: ["main.js"]
-        }
-    }
-}
+import {languageConfigs} from "../../workers/dockerEngine.js";
 
 // Helper function to safely execute code inside a Docker sandbox
-const runInDockerHelper = (tempDirPath, image, command, args, inputData) => {
+const runSubmitInDocker = (tempDirPath, image, command, args, inputData) => {
     return new Promise((resolve, reject) => {
         let output = "";
         let errorOutput = "";
@@ -142,7 +88,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
 
         // 1. Compilation Step (if applicable)
         if (config.compile) {
-            const compileResult = await runInDockerHelper(tempDirPath, config.image, config.compile.command, config.compile.args);
+            const compileResult = await runSubmitInDocker(tempDirPath, config.image, config.compile.command, config.compile.args);
             if (compileResult.status !== "Success") {
                 return {
                     verdict: "Compilation Error",
@@ -153,7 +99,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
 
         // 2. Execution Step
         for (const testCase of testCases) {
-            const result = await runInDockerHelper(tempDirPath, config.image, config.run.command, config.run.args, testCase.input);
+            const result = await runSubmitInDocker(tempDirPath, config.image, config.run.command, config.run.args, testCase.input);
 
             if (result.status !== "Success") {
                 // This will catch "Time Limit Exceeded" or "Runtime Error"

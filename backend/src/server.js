@@ -3,8 +3,11 @@ import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
 
 import {testDbConnection} from "./database/db_connector.js";
+import {submissionQueue} from "./queues/submissionQueue.js";
+
 import authRoutes from "./modules/auth/auth.routes.js";
 import problemRoutes from "./modules/problems/problem.routes.js";
+import submissionRoutes from "./modules/submissions/submission.routes.js";
 
 // Loading the environment variables from the .env file into the process.env object
 dotenv.config();
@@ -26,6 +29,7 @@ app.use(cookieParser());
 // Router Mounting
 app.use("/api/auth", authRoutes); // any request starting with /api/auth will be handed off to authRoutes
 app.use("/api/problems", problemRoutes);
+app.use("/api/submissions", submissionRoutes);
 
 // Base routes (Health check)
 app.get("/", (req, res) => {

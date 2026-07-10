@@ -1,4 +1,4 @@
-import jwt, {TokenExpiredError, JsonWebTokenError} from 'jsonwebtoken';
+import jwt from 'jsonwebtoken';
 
 // Verifies the JWT to ensure that the user is logged-in.
 // Only if the token is valid, requireAuth middleware attaches it to the request object.

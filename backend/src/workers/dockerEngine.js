@@ -11,127 +11,100 @@ export const languageConfigs = {
     c: {
         fileName: "main.c",
         dockerImage: "gcc-alpine",
-        compileCommand: "gcc /app/main.c -o /app/main",
-        runCommand: "timeout 2s /app/main < /app/input.txt"
+        compileCommand: "gcc -fsanitize=address,undefined -g", // adding an AddressSanitizer(ASan) to flag invalid memory access to be an RTE
+        compileArgs: ["/app/main.c", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"], // adding an UndefinedBehaviourSanitizer(UBSan) to flag other common issues like Integer overflows, and so on.
+        runCommand: "/app/main",
+        runArgs: []
     },
     cpp: {
         fileName: "main.cpp",
         dockerImage: "gcc-alpine",
-        compileCommand: "g++ /app/main.cpp -o /app/main",
-        runCommand: "timeout 2s /app/main < /app/input.txt"
+        compileCommand: "g++ -fsanitize=address,undefined -g", // adding an AddressSanitizer(ASan) to flag invalid memory access to be an RTE
+        compileArgs: ["/app/main.cpp", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"], // adding an UndefinedBehaviourSanitizer(UBSan) to flag other common issues like Integer overflows, and so on.
+        runCommand: "/app/main",
+        runArgs: []
     },
     java: {
         fileName: "Main.java",
         dockerImage: "amazoncorretto:21-alpine",
-        compileCommand: "javac /app/Main.java",
-        runCommand: "timeout 2s java Main < /app/input.txt"
+        compileCommand: "javac",
+        compileArgs: ["/app/Main.java"],
+        runCommand: "java",
+        runArgs: ["Main"]
     },
     python: {
         fileName: "main.py",
         dockerImage: "python:3.11-slim",
-        compileCommand: "",
-        runCommand: "timeout 2s python /app/main.py < /app/input.txt"
+        compileCommand: "", // Python is an Interpreted language
+        compileArgs: [],
+        runCommand: "python",
+        runArgs: ["/app/main.py"]
     },
     javascript: {
         fileName: "main.js",
         dockerImage: "node:20-alpine",
-        compileCommand: "",
-        runCommand: "timeout 2s node /app/main.js < /app/input.txt"
+        compileCommand: "", // JavaScript is an Interpreted language
+        compileArgs: [],
+        runCommand: "node",
+        runArgs: ["/app/main.js"]
     }
 }
 
-export const runCodeInDocker = async(code, language, input = "") => {
+// Compiles the code (if applicable)
+export const compileCode = async(tempDirPath, language) => {
     const config = languageConfigs[language];
-    // Validation
-    if (!config) {
-        return {
-            success: false,
-            error: "Unsupported language."
-        };
+
+    // If the language doesn't have a compileCommand, immediately return success for compilation.
+    if (!config.compileCommand) {
+        return {success: true};
     }
+
+    const fullCompileCommand = `${config.compileCommand} ${config.compileArgs.join(" ")}`;
+    const compileDockerCommand = `docker run --rm -v "${tempDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullCompileCommand}"`;
 
     try {
-        const {fileName, dockerImage, compileCommand, runCommand} = config;
-
-        // Creating a temporary directory for this specific execution
-        const jobId = uuidv4();
-        const tempDirPath = path.join(process.cwd(), "temp", jobId); // process.cwd() gives the Current Working Directory of the Node.js process
-        await fs.mkdir(tempDirPath, {recursive: true});
-
-        // Writing user's code and input to the local temporary folder
-        const codeFilePath = path.join(tempDirPath, fileName);
-        await fs.writeFile(codeFilePath, code);
-        const inputFilePath = path.join(tempDirPath, "input.txt");
-        await fs.writeFile(inputFilePath, input);
-
-        // --rm : Automatically delete container after it finishes
-        // -v : Volume Mount the local temp folder into the container at /app
-        // --memory="256m" & --cpus="1.0" : Prevent infinite loops from crashing your actual computer
-        // --network none : Prevent the user's code from making malicious internet requests
-        const baseDockerCommand = `docker run --rm --memory="256m" --cpus="1.0" --network none -v "${tempDirPath}:/app" ${dockerImage}`;
-
-        // Compilation Step (if applicable)
-        if (compileCommand) {
-            const compileDockerCommand = `${baseDockerCommand} sh -c "${compileCommand}"`;
-
-            try {
-                await execPromise(compileDockerCommand, {timeout: 5000});
-            }
-            catch (error) {
-                return {
-                    success: false,
-                    error: "Compilation Error",
-                    details: error.stderr ? error.stderr.trim() : "Unknown compilation failure."
-                };
-            }
-        }
-
-        // Execution Step
-        const runDockerCommand = `${baseDockerCommand} sh -c "${runCommand}"`;
-        try {
-            const {stdout} = await execPromise(runDockerCommand, {timeout: 3000}); // 3s hard timeout on exec
-
-            return {
-                success: true,
-                output: stdout.trim(),
-                error: ""
-            };
-        }
-        catch (error) {
-            if (error.code === 124) { // Timeout exit code from 'timeout' utility
-                return {
-                    success: false,
-                    error: "Time Limit Exceeded"
-                };
-            }
-            if (error.killed) { // Node.js exec timeout
-                return {
-                    success: false,
-                    error: "Time Limit Exceeded"
-                };
-            }
-
-            return {
-                success: false,
-                error: "Runtime Error",
-                details: error.stderr ? error.stderr.trim() : "Unknown runtime failure."
-            };
-        }
+        await execPromise(compileDockerCommand, {timeout: 10000}); // max 10s for compilation
+        return {success: true};
     }
-    catch(error) {
-        console.error("An unexpected error occurred in dockerEngine: ", error);
+    catch (error) {
         return {
             success: false,
-            error: "Internal System Error"
+            error: "Compilation Error",
+            details: error.stderr || error.message || "Unknown compilation failure."
         };
     }
-    finally {
-        // Cleanup
-        try {
-            await fs.rm(tempDirPath, {recursive: true, force: true});
+};
+
+// Runs the code against a single testcase
+export const runCode = async(tempDirPath, language, inputData) => {
+    const config = languageConfigs[language];
+
+    // Writing the test case input into a file
+    const inputFilePath = path.join(tempDirPath, "input.txt");
+    await fs.writeFile(inputFilePath, inputData || "");
+
+    const fullRunCommand = `${config.runCommand} ${config.runArgs.join(" ")}`;
+    const runDockerCommand = `timeout 3 docker run --rm --network none --memory 256m -v "${tempDirPath}:/app" -w /app ${config.dockerImage} sh -c "cat /app/input.txt | ${fullRunCommand}"`;
+
+    try {
+        const {stdout, stderr} = await execPromise(runDockerCommand);
+        return {
+            success: true,
+            output: stdout.trim()
+        };
+    }
+    catch (error) {
+        if (error.code == 124 || error.killed) {
+            return { // error.code 124 is the exit code for the 'timeout' command
+                success: false,
+                error: "Time Limit Exceeded",
+            };
         }
-        catch (cleanupError) {
-            console.error(`Failed to cleanup the temporary directory ${tempDirPath}: `, cleanupError);
-        }
+
+        return {
+            success: false,
+            error: "Runtime Error",
+            details: error.stderr || "Process crashed during execution."
+        };
     }
 };

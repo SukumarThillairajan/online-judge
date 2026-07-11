@@ -3,7 +3,6 @@ import {submissions, testCases} from "../database/schema.js";
 import {eq} from 'drizzle-orm';
 import {redisConnection} from "../queues/submissionQueue.js";
 import {Worker} from 'bullmq';
-import {runCodeInDocker} from "./dockerEngine.js";
 import {evaluateSubmission} from "../modules/submissions/evaluation.service.js";
 
 const workerOptions = {
@@ -20,7 +19,7 @@ export const submissionWorker = new Worker("submissionQueue", async (job) => {
         if (job.name === "run-code") {
             const {code, language, input} = job.data;
 
-            const result = await runCodeInDocker(code, language, input);
+            const result = await runCustomCode(code, language, input);
 
             // Caching the result in Redis for the frontend to poll
             await redisConnection.set(job.id, JSON.stringify(result), "EX", 300); // 5-minute expiry
@@ -40,8 +39,8 @@ export const submissionWorker = new Worker("submissionQueue", async (job) => {
 
             await db.update(submissions).set({
                 verdict: result.verdict,
-                details: result
-            }).where(eq(submissions.submissionId, submissionId));
+                errorDetails: result.details ? {details: result.details} : null
+            }).where(eq(submissions.submissionId, job.data.submissionId));
 
             return result;
         }
@@ -53,7 +52,7 @@ export const submissionWorker = new Worker("submissionQueue", async (job) => {
         if (job.name === "evaluate-code") {
             await db.update(submissions).set({
                 verdict: "Internal System Error",
-                details: {error: error.message}
+                executionDetails: {error: error.message}
             }).where(eq(submissions.submissionId, job.data.submissionId));
         }
 

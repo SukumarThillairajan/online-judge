@@ -1,6 +1,6 @@
 import {db} from "../../database/db_connector.js";
 import {submissions, problems, languageEnum} from "../../database/schema.js";
-import {eq} from 'drizzle-orm';
+import {eq, and, desc} from 'drizzle-orm';
 import {v4 as uuidv4} from 'uuid';
 import {submissionQueue} from "../../queues/submissionQueue.js";
 
@@ -80,14 +80,16 @@ export const createSubmission = async(req, res) => {
             code,
             language
         }).returning({submissionId: submissions.submissionId}); // The schema sets the verdict to "Pending" by default.
+        console.log(`New submission was inserted into the DB successfully. Pushing the submission ${newSubmission.submissionId} to the evaluation queue.`);
 
         // 3. Adding the job to the evaluation queue
-        await submissionQueue.add("evaluate-code", {
+        const job = await submissionQueue.add("evaluate-code", {
             submissionId: newSubmission.submissionId,
             problemId: problemId,
             code: code,
             language: language
-        });
+        })
+        console.log(`New Job was successfully added to the evaluation queue. Job ID: ${job.jobId}.`);
 
         return res.status(201).json({
             status: "Pending",
@@ -122,6 +124,107 @@ export const createSubmission = async(req, res) => {
         return res.status(500).json({
             success: false,
             message: "Internal server error creating submission."
+        });
+    }
+};
+
+export const getSubmissionStatus = async(req, res) => {
+    try {
+        const {id} = req.params;
+        const [submission] = await db.select({
+            verdict: submissions.verdict,
+            errorDetails: submissions.errorDetails
+        }).from(submissions).where(eq(submissions.submissionId, id));
+
+        // Validation
+        if (!submission) {
+            return res.status(404).json({
+                success: false,
+                message: "Submission not found."
+            });
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: submission
+        });
+    }
+    catch (error) {
+        console.error("Error fetching submission status: ", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error fetching submission status."
+        });
+    }
+};
+
+export const getMySubmissionsForProblem = async(req, res) => {
+    try {
+        const userId = req.user.userId;
+        const {problemId} = req.params;
+
+        const mySubmissions = await db.select().from(submissions)
+            .where(
+                and(
+                    eq(submissions.userId, userId), 
+                    eq(submissions.problemId, problemId)
+                )
+            ).orderBy(desc(submissions.createdAt));
+
+        return res.status(200).json({
+            success: true,
+            data: mySubmissions
+        });
+    }
+    catch (error) {
+        console.error("Error my submissions for problem: ", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error fetching my submissions for problem."
+        });
+    }
+};
+
+export const getAllSubmissionsForProblem = async(req, res) => {
+    try {
+        const {problemId} = req.params;
+
+        const allSubmissions = await db.select().from(submissions)
+            .where(eq(submissions.problemId, problemId))
+            .orderBy(desc(submissions.createdAt));
+
+        return res.status(200).json({
+            success: true,
+            data: allSubmissions
+        });
+    }
+    catch (error) {
+        console.error("Error while fetching all submissions for problem: ", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error fetching all submissions for problem."
+        });
+    }
+};
+
+export const getMySubmissions = async(req, res) => {
+    try {
+        const userId = req.user.userId;
+
+        const mySubmissions = await db.select().from(submissions)
+            .where(eq(submissions.userId, userId))
+            .orderBy(desc(submissions.createdAt));
+        
+        return res.status(200).json({
+            success: true,
+            data: mySubmissions
+        });
+    }
+    catch (error) {
+        console.error("Error fetching my submissions: ", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error fetching my submissions."
         });
     }
 };

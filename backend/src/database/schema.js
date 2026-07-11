@@ -72,7 +72,8 @@ export const submissions = pgTable("submissions", {
     code: text("code").notNull(),
     language: languageEnum("language").notNull(),
     verdict: verdictEnum("verdict").default("Pending").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull()
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    errorDetails: jsonb("error_details")
 }, (table) => ({
     userIndex: index("user_index").on(table.userId),
     problemIndex: index("problem_index").on(table.problemId),

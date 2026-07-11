@@ -36,11 +36,6 @@ export const testDbConnection = async () => {
     }
 }
 
-// Graceful shutdown
-// process.on() is used to attach event listeners to the 'process' object (a global object representing the current Node.js process).
-process.on('SIGINT', async () => { // writing a callback function (event listener) to close the DB pool, once "Ctrl + C" (SIGINT) is hit in the terminal (i.e, the server is shutdown).
-    console.log('SIGINT signal received: Closing DB pool');
+export const closeDbConnection = async () => {
     await pool.end();
-    console.log('DB pool has been closed');
-    process.exit(0);
-});
+};

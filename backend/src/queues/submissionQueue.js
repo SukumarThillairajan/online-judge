@@ -51,11 +51,3 @@ export const submissionQueue = new Queue("submissionQueue", {
 submissionQueue.on("error", (err) => {
     console.error("BullMQ queue error: ", err);
 });
-
-// Graceful shutdown
-process.on('SIGINT', async () => {
-    console.log("SIGINT signal received: Closing BullMQ Redis connection.");
-    await submissionQueue.close();
-    console.log("BullMQ queue and Redis connection have been closed.");
-    process.exit(0);
-});

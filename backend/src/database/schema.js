@@ -6,7 +6,7 @@ import {pgEnum, pgTable, uuid, varchar, timestamp, text, jsonb, index} from 'dri
 // Declaring and exporting the Role Enum for Role-Based Access Control (RBAC).
 export const roleEnum = pgEnum("role", ["ADMIN", "USER"]);
 
-export const languageEnum = pgEnum("language", ["c", "cpp", "java", "python", "javaScript"]);
+export const languageEnum = pgEnum("language", ["c", "cpp", "java", "python", "javascript"]);
 
 export const verdictEnum = pgEnum("verdict", [
     "Pending",

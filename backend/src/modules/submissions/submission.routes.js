@@ -5,6 +5,7 @@ import {requireAuth} from "../../middlewares/auth.middleware.js";
 import {
     createSubmission, 
     runCustomCode,
+    getRunStatus,
     getSubmissionStatus,
     getMySubmissionsForProblem,
     getAllSubmissionsForProblem,
@@ -20,6 +21,10 @@ router.post("/submit", requireAuth, createSubmission);
 // Route: POST /api/submissions/run
 // Purpose: Queues a code execution job against custom and sample test cases
 router.post("/run", requireAuth, runCustomCode);
+
+// Route: GET /api/submissions/run/:id/status
+// Purpose: Fetches the result of a 'run-code' job from the Redis cache.
+router.get("/run/:id/status", requireAuth, getRunStatus);
 
 // Route: GET /api/submissions/me
 // Purpose: 

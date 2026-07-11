@@ -11,7 +11,7 @@ export const languageConfigs = {
     c: {
         fileName: "main.c",
         dockerImage: "gcc-alpine",
-        compileCommand: "gcc -fsanitize=address,undefined -g", // adding an AddressSanitizer(ASan) to flag invalid memory access to be an RTE
+        compileCommand: "gcc -fsanitize=address,undefined -fno-sanitize-recover=all -g", // adding an AddressSanitizer(ASan) to flag invalid memory access to be an RTE
         compileArgs: ["/app/main.c", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"], // adding an UndefinedBehaviourSanitizer(UBSan) to flag other common issues like Integer overflows, and so on.
         runCommand: "/app/main",
         runArgs: []
@@ -19,8 +19,8 @@ export const languageConfigs = {
     cpp: {
         fileName: "main.cpp",
         dockerImage: "gcc-alpine",
-        compileCommand: "g++ -fsanitize=address,undefined -g", // adding an AddressSanitizer(ASan) to flag invalid memory access to be an RTE
-        compileArgs: ["/app/main.cpp", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"], // adding an UndefinedBehaviourSanitizer(UBSan) to flag other common issues like Integer overflows, and so on.
+        compileCommand: "g++ -fsanitize=address,undefined -fno-sanitize-recover=all -g",
+        compileArgs: ["/app/main.cpp", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"],
         runCommand: "/app/main",
         runArgs: []
     },
@@ -35,16 +35,16 @@ export const languageConfigs = {
     python: {
         fileName: "main.py",
         dockerImage: "python:3.11-slim",
-        compileCommand: "", // Python is an Interpreted language
-        compileArgs: [],
+        compileCommand: "python -m py_compile", // This acts as a syntax check
+        compileArgs: ["/app/main.py"],
         runCommand: "python",
         runArgs: ["/app/main.py"]
     },
     javascript: {
         fileName: "main.js",
         dockerImage: "node:20-alpine",
-        compileCommand: "", // JavaScript is an Interpreted language
-        compileArgs: [],
+        compileCommand: "node -c", // This acts as a syntax check
+        compileArgs: ["/app/main.js"],
         runCommand: "node",
         runArgs: ["/app/main.js"]
     }
@@ -60,7 +60,7 @@ export const compileCode = async(tempDirPath, language) => {
     }
 
     const fullCompileCommand = `${config.compileCommand} ${config.compileArgs.join(" ")}`;
-    const compileDockerCommand = `docker run --rm -v "${tempDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullCompileCommand}"`;
+    const compileDockerCommand = `docker run --rm -v "${tempDirPath}://app" -w //app ${config.dockerImage} sh -c "${fullCompileCommand}"`; // using "//" for paths that should be interpreted literally as absolute paths within the container's filesystem.
 
     try {
         await execPromise(compileDockerCommand, {timeout: 10000}); // max 10s for compilation
@@ -84,18 +84,18 @@ export const runCode = async(tempDirPath, language, inputData) => {
     await fs.writeFile(inputFilePath, inputData || "");
 
     const fullRunCommand = `${config.runCommand} ${config.runArgs.join(" ")}`;
-    const runDockerCommand = `timeout 3 docker run --rm --network none --memory 256m -v "${tempDirPath}:/app" -w /app ${config.dockerImage} sh -c "cat /app/input.txt | ${fullRunCommand}"`;
+    const runDockerCommand = `docker run --rm --network none --memory 256m -v "${tempDirPath}://app" -w //app ${config.dockerImage} sh -c "${fullRunCommand} < //app/input.txt"`;
 
     try {
-        const {stdout, stderr} = await execPromise(runDockerCommand);
+        const {stdout, stderr} = await execPromise(runDockerCommand, { timeout: 3000 }); // 3-second timeout
         return {
             success: true,
             output: stdout.trim()
         };
     }
     catch (error) {
-        if (error.code == 124 || error.killed) {
-            return { // error.code 124 is the exit code for the 'timeout' command
+        if (error.killed && error.signal === 'SIGTERM') {
+            return {
                 success: false,
                 error: "Time Limit Exceeded",
             };

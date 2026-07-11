@@ -3,7 +3,7 @@ import {submissions, testCases} from "../database/schema.js";
 import {eq} from 'drizzle-orm';
 import {redisConnection} from "../queues/submissionQueue.js";
 import {Worker} from 'bullmq';
-import {evaluateSubmission} from "../modules/submissions/evaluation.service.js";
+import {evaluateSubmission, runCustomCode} from "../modules/submissions/evaluation.service.js";
 
 const workerOptions = {
     connection: redisConnection,
@@ -17,9 +17,9 @@ export const submissionWorker = new Worker("submissionQueue", async (job) => {
 
     try {
         if (job.name === "run-code") {
-            const {code, language, input} = job.data;
+            const {code, language, customInput} = job.data;
 
-            const result = await runCustomCode(code, language, input);
+            const result = await runCustomCode(code, language, customInput);
 
             // Caching the result in Redis for the frontend to poll
             await redisConnection.set(job.id, JSON.stringify(result), "EX", 300); // 5-minute expiry

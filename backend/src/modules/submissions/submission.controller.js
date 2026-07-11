@@ -2,7 +2,7 @@ import {db} from "../../database/db_connector.js";
 import {submissions, problems, languageEnum} from "../../database/schema.js";
 import {eq, and, desc} from 'drizzle-orm';
 import {v4 as uuidv4} from 'uuid';
-import {submissionQueue} from "../../queues/submissionQueue.js";
+import {submissionQueue, redisConnection} from "../../queues/submissionQueue.js";
 
 export const runCustomCode = async(req, res) => {
     try {
@@ -89,7 +89,7 @@ export const createSubmission = async(req, res) => {
             code: code,
             language: language
         })
-        console.log(`New Job was successfully added to the evaluation queue. Job ID: ${job.jobId}.`);
+        console.log(`New Job was successfully added to the evaluation queue. Job ID: ${job.id}.`);
 
         return res.status(201).json({
             status: "Pending",
@@ -128,28 +128,56 @@ export const createSubmission = async(req, res) => {
     }
 };
 
+export const getRunStatus = async(req, res) => {
+    try {
+        const {id} = req.params;
+
+        // Check Redis for the 'run-code' job result
+        const redisResult = await redisConnection.get(id);
+
+        if (redisResult) {
+            return res.status(200).json({
+                success: true,
+                source: "cache",
+                data: JSON.parse(redisResult)
+            });
+        }
+
+        // If not found, it's either still pending or has expired.
+        return res.status(202).json({ // Using 202 Accepted to indicate the request is valid but processing is not complete.
+            success: true,
+            source: "none",
+            data: { status: "Pending" }
+        });
+
+    } catch (error) {
+        console.error("Error fetching run status from Redis: ", error);
+        return res.status(500).json({
+            success: false,
+            message: "Internal server error fetching run status."
+        });
+    }
+};
+
 export const getSubmissionStatus = async(req, res) => {
     try {
         const {id} = req.params;
+
+        // Check the database for an 'evaluate-code' submission
         const [submission] = await db.select({
             verdict: submissions.verdict,
             errorDetails: submissions.errorDetails
         }).from(submissions).where(eq(submissions.submissionId, id));
 
-        // Validation
         if (!submission) {
-            return res.status(404).json({
-                success: false,
-                message: "Submission not found."
-            });
+            return res.status(404).json({success: false, message: "Submission not found."});
         }
 
         return res.status(200).json({
             success: true,
             data: submission
         });
-    }
-    catch (error) {
+    } catch (error) {
         console.error("Error fetching submission status: ", error);
         return res.status(500).json({
             success: false,

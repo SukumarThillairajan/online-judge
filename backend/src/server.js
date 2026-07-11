@@ -1,10 +1,12 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import {testDbConnection, closeDbConnection} from "./database/db_connector.js";
+import {submissionQueue} from "./queues/submissionQueue.js";
 
-import {testDbConnection} from "./database/db_connector.js";
 import authRoutes from "./modules/auth/auth.routes.js";
 import problemRoutes from "./modules/problems/problem.routes.js";
+import submissionRoutes from "./modules/submissions/submission.routes.js";
 
 // Loading the environment variables from the .env file into the process.env object
 dotenv.config();
@@ -26,6 +28,7 @@ app.use(cookieParser());
 // Router Mounting
 app.use("/api/auth", authRoutes); // any request starting with /api/auth will be handed off to authRoutes
 app.use("/api/problems", problemRoutes);
+app.use("/api/submissions", submissionRoutes);
 
 // Base routes (Health check)
 app.get("/", (req, res) => {
@@ -39,4 +42,19 @@ await testDbConnection();
 
 app.listen(PORT, () => {
     console.log(`Server is successfully running on port http://localhost:${PORT}`); // backtick allows for string interpolation.
+});
+
+// Centralized Graceful Shutdown
+process.on('SIGINT', async () => {
+    console.log('SIGINT signal received: Closing connections gracefully.');
+    try {
+        await submissionQueue.close();
+        console.log('BullMQ queue and Redis connection have been closed.');
+        await closeDbConnection();
+        console.log('Database pool has been closed.');
+        process.exit(0);
+    } catch (error) {
+        console.error('Error during graceful shutdown: ', error);
+        process.exit(1);
+    }
 });

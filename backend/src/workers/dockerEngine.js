@@ -12,7 +12,7 @@ export const languageConfigs = {
         fileName: "main.c",
         dockerImage: "gcc-alpine",
         compileCommand: "gcc -fsanitize=address,undefined -fno-sanitize-recover=all -g", // adding an AddressSanitizer(ASan) to flag invalid memory access to be an RTE
-        compileArgs: ["/app/main.c", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"], // adding an UndefinedBehaviourSanitizer(UBSan) to flag other common issues like Integer overflows, and so on.
+        compileArgs: ["-Wall", "-Werror", "/app/main.c", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"], // adding an UndefinedBehaviourSanitizer(UBSan) to flag other common issues like Integer overflows, and so on.
         runCommand: "/app/main",
         runArgs: []
     },
@@ -20,7 +20,7 @@ export const languageConfigs = {
         fileName: "main.cpp",
         dockerImage: "gcc-alpine",
         compileCommand: "g++ -fsanitize=address,undefined -fno-sanitize-recover=all -g",
-        compileArgs: ["/app/main.cpp", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"],
+        compileArgs: ["-Wall", "-Werror", "/app/main.cpp", "-o", "/app/main", "-lubsan", "-lasan", "-lstdc++"],
         runCommand: "/app/main",
         runArgs: []
     },
@@ -28,7 +28,7 @@ export const languageConfigs = {
         fileName: "Main.java",
         dockerImage: "amazoncorretto:21-alpine",
         compileCommand: "javac",
-        compileArgs: ["/app/Main.java"],
+        compileArgs: ["Xlint:all", "-Werror", "/app/Main.java"],
         runCommand: "java",
         runArgs: ["Main"]
     },
@@ -38,7 +38,7 @@ export const languageConfigs = {
         compileCommand: "python -m py_compile", // This acts as a syntax check
         compileArgs: ["/app/main.py"],
         runCommand: "python",
-        runArgs: ["/app/main.py"]
+        runArgs: ["-W", "error", "/app/main.py"]
     },
     javascript: {
         fileName: "main.js",
@@ -46,7 +46,7 @@ export const languageConfigs = {
         compileCommand: "node -c", // This acts as a syntax check
         compileArgs: ["/app/main.js"],
         runCommand: "node",
-        runArgs: ["/app/main.js"]
+        runArgs: ["--use_strict", "--throw-deprecation", "/app/main.js"]
     }
 }
 

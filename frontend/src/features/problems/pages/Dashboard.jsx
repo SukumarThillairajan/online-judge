@@ -3,10 +3,12 @@ import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 const Dashboard = () => {
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+
   const { data: problems = [], isLoading, error } = useQuery({
     queryKey: ['problems'], // This is the unique "cache key"
     queryFn: async () => {
-      const response = await fetch('/api/problems');
+      const response = await fetch(`${API_URL}/api/problems`);
       if (!response.ok) {
         throw new Error('Failed to fetch problems');
       }

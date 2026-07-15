@@ -6,12 +6,14 @@ import ProblemDescription from '../components/ProblemDescription.jsx';
 import CodeEditor from '../components/CodeEditor.jsx';
 
 const Arena = () => {
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+
   // 1. Grab the problem ID from the URL (e.g., /problems/123)
   const { id } = useParams();
 
   // 2. Editor State Management
   const [language, setLanguage] = useState('javascript');
-  const [code, setCode] = useState('console.log("Hello World!");');
+  const [code, setCode] = useState('// Start your code here...');
   const [customInput, setCustomInput] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [verdict, setVerdict] = useState(null);
@@ -20,7 +22,7 @@ const Arena = () => {
   const { data: problem, isLoading, error } = useQuery({
     queryKey: ['problem', id],
     queryFn: async () => {
-      const response = await fetch(`/api/problems/${id}`);
+      const response = await fetch(`${API_URL}/api/problems/${id}`);
       if (!response.ok) throw new Error('Failed to fetch problem details');
       const data = await response.json();
       return data.data; // The problem object is nested under the 'data' property
@@ -54,7 +56,7 @@ const Arena = () => {
     setVerdict({ status: 'Running...', message: 'Executing code against custom input...' });
     try {
       // 1. Start the run job
-      const { data: { jobId } } = await axios.post('/api/submissions/run', {
+      const { data: { jobId } } = await axios.post(`${API_URL}/api/submissions/run`, {
         problemId: id,
         code,
         language,
@@ -63,7 +65,7 @@ const Arena = () => {
 
       // 2. Poll for the result
       const result = await poll(async () => {
-        const response = await axios.get(`/api/submissions/run/${jobId}/status`);
+        const response = await axios.get(`${API_URL}/api/submissions/run/${jobId}/status`);
         // When status is pending, backend returns 204 No Content, so response.data is empty.
         // When complete, it returns 200 with a body.
         if (response.status === 200 && response.data) {
@@ -88,7 +90,7 @@ const Arena = () => {
     setVerdict({ status: 'Evaluating...', message: 'Testing against hidden test cases...' });
     try {
       // 1. Create the submission
-      const { data: { submissionId } } = await axios.post('/api/submissions/submit', {
+      const { data: { submissionId } } = await axios.post(`${API_URL}/api/submissions/submit`, {
         problemId: id,
         code,
         language,
@@ -96,7 +98,7 @@ const Arena = () => {
 
       // 2. Poll for the submission status
       const result = await poll(async () => {
-        const response = await axios.get(`/api/submissions/${submissionId}/status`);
+        const response = await axios.get(`${API_URL}/api/submissions/${submissionId}/status`);
         // A 204 (No Content) response means the submission is still being processed.
         // A 200 (OK) response means we have a status, but it might still be "Pending".
         if (response.status === 200 && response.data) {

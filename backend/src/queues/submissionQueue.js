@@ -5,21 +5,16 @@ import dotenv from "dotenv";
 dotenv.config();
 
 // Validating that the Redis connection details are set in the environment variables.
-if (!process.env.REDIS_HOST) {
-    console.error("FATAL ERROR: REDIS_HOST is not defined in the environment variables.");
-    process.exit(1); // Exit the application with a failure code.
-}
-if (!process.env.REDIS_PORT) {
-    console.error("FATAL ERROR: REDIS_PORT is not defined in the environment variables.");
+if (!process.env.REDIS_URL) {
+    console.error("FATAL ERROR: REDIS_URL is not defined in the environment variables.");
     process.exit(1); // Exit the application with a failure code.
 }
 
 // Establishing the Redis connection
-export const redisConnection = new Redis({
-    host: process.env.REDIS_HOST,
-    port: process.env.REDIS_PORT,
+export const redisConnection = new Redis(process.env.REDIS_URL, {
     maxRetriesPerRequest: null, // BullMQ requires this to be null to handle blocking commands correctly.
     enableReadyCheck: true, // ioredis will check the status of the Redis server and emit a ready event when the server is able to process commands.
+    tls: {rejectUnauthorized: false}, // Upstash requires this to be false
 });
 
 // Event listeners for the Redis connection to provide better logging and error handling.

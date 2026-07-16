@@ -29,7 +29,8 @@ app.use(cookieParser());
 // Adding all the trusted frontends to this array
 const allowedOrigins = [
   'http://localhost:3000', // For my local development
-  'https://online-judge-sable.vercel.app' // For V1 production
+  'https://online-judge-sable.vercel.app', // For V1 production
+  "https://online-judge-ij4lyt74n-sukumar-s-team.vercel.app",
 ];
 app.use(cors({
   origin: (origin, callback) => {

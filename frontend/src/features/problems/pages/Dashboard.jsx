@@ -54,7 +54,7 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {problems.map((problem) => (
+                {problems?.map((problem) => (
                   <tr key={problem.problemId} className="hover:bg-gray-50 transition-colors">
                     
                     {/* Status Column (Placeholder for V1) */}

@@ -31,7 +31,7 @@ const SubmissionsList = ({ problemId, type }) => {
   const { data: submissions = [], isLoading, error } = useQuery({
     queryKey: ['submissions', problemId, type],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/submissions/problem/${problemId}/${type}`);
+      const response = await fetch(`${API_URL}/api/submissions/problem/${problemId}/${type}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch submissions');
       const data = await response.json();
       return data.data || [];

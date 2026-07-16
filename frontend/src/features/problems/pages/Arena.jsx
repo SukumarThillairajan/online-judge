@@ -61,12 +61,12 @@ const Arena = () => {
         code,
         language,
         customInput,
-      });
+      }, { withCredentials: true });
       const jobId = runResponse?.data?.jobId;
       if (!jobId) throw new Error("Failed to start the run job.");
       // 2. Poll for the result
       const result = await poll(async () => {
-        const response = await axios.get(`${API_URL}/api/submissions/run/${jobId}/status`);
+        const response = await axios.get(`${API_URL}/api/submissions/run/${jobId}/status`, { withCredentials: true });
         // When status is pending, backend returns 204 No Content, so response.data is empty.
         // When complete, it returns 200 with a body.
         if (response.status === 200 && response.data) {
@@ -95,12 +95,12 @@ const Arena = () => {
         problemId: id,
         code,
         language,
-      });
+      }, { withCredentials: true });
       const submissionId = submitResponse?.data?.submissionId;
       if (!submissionId) throw new Error("Failed to create submission.");
       // 2. Poll for the submission status
       const result = await poll(async () => {
-        const response = await axios.get(`${API_URL}/api/submissions/${submissionId}/status`);
+        const response = await axios.get(`${API_URL}/api/submissions/${submissionId}/status`, { withCredentials: true });
         // A 204 (No Content) response means the submission is still being processed.
         // A 200 (OK) response means we have a status, but it might still be "Pending".
         if (response.status === 200 && response.data) {

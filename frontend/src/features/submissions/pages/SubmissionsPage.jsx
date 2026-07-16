@@ -15,7 +15,7 @@ const SubmissionsPage = () => {
   const { data: problem } = useQuery({
     queryKey: ['problem', id],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/problems/${id}`);
+      const response = await fetch(`${API_URL}/api/problems/${id}`, { credentials: 'include' });
       if (!response.ok) throw new Error('Failed to fetch problem');
       const data = await response.json();
       return data?.data || data;

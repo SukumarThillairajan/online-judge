@@ -8,7 +8,7 @@ const Dashboard = () => {
   const { data: problems = [], isLoading, error } = useQuery({
     queryKey: ['problems'], // This is the unique "cache key"
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/problems`);
+      const response = await fetch(`${API_URL}/api/problems`, { credentials: 'include' });
       if (!response.ok) {
         throw new Error('Failed to fetch problems');
       }

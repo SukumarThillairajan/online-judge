@@ -1,6 +1,7 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cookieParser from 'cookie-parser';
+import cors from 'cors';
 import {testDbConnection, closeDbConnection} from "./database/db_connector.js";
 import {submissionQueue} from "./queues/submissionQueue.js";
 
@@ -24,6 +25,25 @@ const PORT = process.env.PORT || 3000; // Defaulting to the standard Node.js/Exp
 // Global Middlewares
 app.use(express.json()); // Middleware to parse incoming JSON payloads. Without this req.body will be undefined for JSON requests.
 app.use(cookieParser());
+
+// Adding all the trusted frontends to this array
+const allowedOrigins = [
+  'http://localhost:3000', // For my local development
+  'https://online-judge-sable.vercel.app' // For V1 production
+];
+app.use(cors({
+  origin: (origin, callback) => {
+    // allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.indexOf(origin) === -1) {
+      return callback(new Error('The CORS policy for this site does not allow access from the specified Origin.'), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true, // This is MANDATORY for your JWT cookies to work
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Router Mounting
 app.use("/api/auth", authRoutes); // any request starting with /api/auth will be handed off to authRoutes

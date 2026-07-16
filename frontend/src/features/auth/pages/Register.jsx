@@ -43,7 +43,7 @@ const Register = () => {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Registration failed. Please try again.');
+        throw new Error(data?.error || 'Registration failed. Please try again.');
       }
 
       navigate('/login');

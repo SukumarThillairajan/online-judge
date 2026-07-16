@@ -18,7 +18,7 @@ export default function Login() {
                 password: data.password,
             };
 
-            await axios.post(`${API_URL}/api/auth/login`, payload);
+            await axios.post(`${API_URL}/api/auth/login`, payload, { withCredentials: true });
 
             // If successful, navigate to the home/dashboard page
             navigate('/');

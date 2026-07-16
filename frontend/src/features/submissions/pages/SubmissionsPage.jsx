@@ -8,13 +8,14 @@ import Leaderboard from '../components/Leaderboard';
 const SubmissionsPage = () => {
   const { id } = useParams();
   const [activeTab, setActiveTab] = useState('me');
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
 
   // React Query Magic: Because we already fetched this problem in the Arena, 
   // React Query will instantly load this from cache without making a new network request!
   const { data: problem } = useQuery({
     queryKey: ['problem', id],
     queryFn: async () => {
-      const response = await fetch(`/api/problems/${id}`);
+      const response = await fetch(`${API_URL}/api/problems/${id}`);
       if (!response.ok) throw new Error('Failed to fetch problem');
       const data = await response.json();
       return data.data || data;

@@ -11,6 +11,7 @@ const Register = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
 
   const handleChange = (e) => {
     setFormData({
@@ -31,7 +32,7 @@ const Register = () => {
         emailId: formData.email,
         password: formData.password,
       };
-      const response = await fetch('/api/auth/register', {
+      const response = await fetch(`${API_URL}/api/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

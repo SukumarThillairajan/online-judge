@@ -1,0 +1,21 @@
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Node
+node_modules
+npm-debug.log
+
+# Project files not needed in image
+.postman
+docs
+frontend
+postman
+
+# .env
+.env
+.env.production

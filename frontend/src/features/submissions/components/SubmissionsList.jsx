@@ -26,10 +26,12 @@ const SubmissionsList = ({ problemId, type }) => {
   // State for our Pop-Up Modal
   const [selectedSubmission, setSelectedSubmission] = useState(null);
 
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+
   const { data: submissions = [], isLoading, error } = useQuery({
     queryKey: ['submissions', problemId, type],
     queryFn: async () => {
-      const response = await fetch(`/api/submissions/problem/${problemId}/${type}`);
+      const response = await fetch(`${API_URL}/api/submissions/problem/${problemId}/${type}`);
       if (!response.ok) throw new Error('Failed to fetch submissions');
       const data = await response.json();
       return data.data || [];

@@ -1,8 +1,6 @@
 import path from 'path';
 import fs from 'fs/promises';
-import {spawn} from 'child_process';
-import os from 'os';
-import crypto from 'crypto';
+import { randomUUID } from 'crypto';
 
 import {languageConfigs, compileCode, runCode} from "../../workers/dockerEngine.js";
 
@@ -15,16 +13,21 @@ export const evaluateSubmission = async (code, language, testCases) => {
     }
 
     // Creating a temporary directory for this specific submission
-    const tempDirName = crypto.randomUUID();
-    const tempDirPath = path.join(os.tmpdir(), tempDirName); // returns the absolute path of the OS' default directory for temporary files.
-    const filePath = path.join(tempDirPath, config.fileName);
+    const tempDirName = randomUUID();
+
+    // 1. The path the Node.js Worker uses to write the files (inside its own container)
+    const workerDirPath = path.join('/app/temp', tempDirName);
+    // 2. The path the EC2 Host uses to mount into the compiler/runner container
+    const hostDirPath = path.join('/home/ubuntu/app/temp', tempDirName);
+
+    const filePath = path.join(workerDirPath, config.fileName);
 
     try {
-        await fs.mkdir(tempDirPath, {recursive: true});
+        await fs.mkdir(workerDirPath, {recursive: true});
         await fs.writeFile(filePath, code);
 
         // 1. Compilation Step (if applicable)
-        const compileResult = await compileCode(tempDirPath, language);
+        const compileResult = await compileCode(hostDirPath, language);
         if (!compileResult.success) {
             return {
                 verdict: compileResult.error,
@@ -34,7 +37,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
 
         // 2. Execution Step
         for (const testCase of testCases) {
-            const result = await runCode(tempDirPath, language, testCase.input);
+            const result = await runCode(workerDirPath, hostDirPath, language, testCase.input);
 
             if (!result.success) {
                 return {
@@ -71,7 +74,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
     finally {
         // Cleanup
         try {
-            await fs.rm(tempDirPath, {recursive: true, force: true});
+            await fs.rm(workerDirPath, {recursive: true, force: true});
         }
         catch (cleanupError) {
             console.error(`Failed to clean up the temp directory ${tempDirPath}: `, cleanupError);
@@ -86,16 +89,21 @@ export const runCustomCode = async (code, language, customInput) => {
     }
 
     // Creating a temporary directory to run this code without submitting it.
-    const tempDirName = crypto.randomUUID();
-    const tempDirPath = path.join(os.tmpdir(), tempDirName);
-    const filePath = path.join(tempDirPath, config.fileName);
+    const tempDirName = randomUUID();
+
+    // 1. The path the Node.js Worker uses to write the files (inside its own container)
+    const workerDirPath = path.join('/app/temp', tempDirName);
+    // 2. The path the EC2 Host uses to mount into the compiler/runner container
+    const hostDirPath = path.join('/home/ubuntu/app/temp', tempDirName);
+
+    const filePath = path.join(workerDirPath, config.fileName);
 
     try {
-        await fs.mkdir(tempDirPath, {recursive: true});
+        await fs.mkdir(workerDirPath, {recursive: true});
         await fs.writeFile(filePath, code);
 
         // Compilation step
-        const compileResult = await compileCode(tempDirPath, language);
+        const compileResult = await compileCode(hostDirPath, language);
         if (!compileResult.success) {
             return {
                 error: compileResult.error,
@@ -104,7 +112,7 @@ export const runCustomCode = async (code, language, customInput) => {
         }
 
         // Execution step
-        const result = await runCode(tempDirPath, language, customInput);
+        const result = await runCode(workerDirPath, hostDirPath, language, customInput);
         if (!result.success) {
             return {
                 error: result.error,
@@ -127,7 +135,7 @@ export const runCustomCode = async (code, language, customInput) => {
     finally {
         // Cleanup
         try {
-            await fs.rm(tempDirPath, {recursive: true, force: true});
+            await fs.rm(workerDirPath, {recursive: true, force: true});
         }
         catch (cleanupError) {
             console.error(`Failed to remove the temp directory ${tempDirPath}: `, cleanupError);

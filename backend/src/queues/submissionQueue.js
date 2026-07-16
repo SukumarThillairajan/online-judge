@@ -14,7 +14,7 @@ if (!process.env.REDIS_URL) {
 export const redisConnection = new Redis(process.env.REDIS_URL, {
     maxRetriesPerRequest: null, // BullMQ requires this to be null to handle blocking commands correctly.
     enableReadyCheck: true, // ioredis will check the status of the Redis server and emit a ready event when the server is able to process commands.
-    tls: {rejectUnauthorized: false}, // Upstash requires this to be false
+    // tls: {rejectUnauthorized: false}, // Upstash requires this to be false
 });
 
 // Event listeners for the Redis connection to provide better logging and error handling.

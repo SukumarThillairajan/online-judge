@@ -23,10 +23,8 @@ const app = express();
 const PORT = process.env.PORT || 3000; // Defaulting to the standard Node.js/Express.js server port 3000.
 
 // Global Middlewares
-app.options('*', cors({
-    origin: (origin, callback) => callback(null, true),
-    credentials: true
-}));
+app.use(express.json()); // Middleware to parse incoming JSON payloads. Without this req.body will be undefined for JSON requests.
+app.use(cookieParser());
 // Adding all the trusted frontends to this array
 const allowedOrigins = [
   "http://localhost:3000", // For my local development
@@ -38,10 +36,10 @@ app.use(cors({
         // Allowing requests with no origin like Postman or curl
         if (!origin) return callback(null, true);
 
-        // Allowing requests from the allowed origins (exact matches)
-        if (allowedOrigins.indexOf(origin) !== -1) {
-            return callback(null, true);
-        }
+        // // Allowing requests from the allowed origins (exact matches)
+        // if (allowedOrigins.indexOf(origin) !== -1) {
+        //     return callback(null, true);
+        // }
 
         // Allowing URLs of the form https://online-judge-[ANYTHING].vercel.app (for preview deployments)
         if (/^https:\/\/online-judge-[a-zA-Z0-9-]+\.vercel\.app$/.test(origin)) {
@@ -55,8 +53,6 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
-app.use(express.json()); // Middleware to parse incoming JSON payloads. Without this req.body will be undefined for JSON requests.
-app.use(cookieParser());
 
 // Router Mounting
 app.use("/api/auth", authRoutes); // any request starting with /api/auth will be handed off to authRoutes

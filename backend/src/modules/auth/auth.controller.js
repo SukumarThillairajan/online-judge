@@ -38,9 +38,11 @@ export const register = async (req, res) => {
 
         res.cookie("token", token, {
             httpOnly: true, // prevents JavaScript from accessing the cookie, enhancing security against XSS attacks
-            secure: process.env.NODE_ENV === "production", // 'secure' attribute ensures the cookie is sent over HTTPS only. It's set to true in production for added security.
-            sameSite: "strict", // cookie will only be sent with same-site requests (not with any cross-site requests), enhancing CSRF protection.
-            maxAge: 24 * 60 * 60 * 1000 // 1 day in milliseconds
+            secure: process.env.NODE_ENV === "production", // In production, cookie is sent over HTTPS only.
+            // For cross-site cookie to be sent, sameSite must be 'none' and secure must be 'true'.
+            // In development, sameSite can be 'lax' and secure can be 'false'.
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+            maxAge: 24 * 60 * 60 * 1000 // 1 day in ms
         });
 
         res.status(201).json({success: true,message: "Registration successful", user: newUser});
@@ -85,8 +87,10 @@ export const login = async (req, res) => {
         // Attaching the token to an HTTP-only cookie
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
+            secure: process.env.NODE_ENV === "production", // In production, cookie is sent over HTTPS only.
+            // For cross-site cookie to be sent, sameSite must be 'none' and secure must be 'true'.
+            // In development, sameSite can be 'lax' and secure can be 'false'.
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             maxAge: 24 * 60 * 60 * 1000 // 1 day in ms
         })
 
@@ -110,8 +114,8 @@ export const logout = (req, res) => {
     // Clearing the cookie by name and matching the security attributes.
     res.clearCookie("token", {
         httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        secure: process.env.NODE_ENV === "production", // Match the settings used when creating the cookie
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.status(200).json({success: true,message: "Logout successful"});

@@ -1,7 +1,7 @@
 import {db} from "../../database/db_connector.js";
 import {submissions, problems, languageEnum} from "../../database/schema.js";
 import {eq, and, desc} from 'drizzle-orm';
-import {v4 as uuidv4} from 'uuid';
+import { randomUUID } from 'crypto';
 import {submissionQueue, redisConnection} from "../../queues/submissionQueue.js";
 
 export const runCustomCode = async(req, res) => {
@@ -22,13 +22,13 @@ export const runCustomCode = async(req, res) => {
             });
         }
 
-        const secureJobId = uuidv4();
+        const secureJobId = randomUUID();
         const job = await submissionQueue.add("run-code", {
             code,
             language,
             customInput: customInput || "" // passing the custom stdin, defaulting to empty string
         }, {
-            jobId: secureJobId // forcing Redis to use our uuidv4 as the jobId, instead of it's default sequential job ID.
+            jobId: secureJobId // forcing Redis to use our randomUUID as the jobId, instead of it's default sequential job ID.
         });
 
         return res.status(200).json({

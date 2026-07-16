@@ -25,7 +25,7 @@ const Arena = () => {
       const response = await fetch(`${API_URL}/api/problems/${id}`);
       if (!response.ok) throw new Error('Failed to fetch problem details');
       const data = await response.json();
-      return data.data; // The problem object is nested under the 'data' property
+      return data?.data; // The problem object is nested under the 'data' property
     }
   });
 
@@ -56,13 +56,14 @@ const Arena = () => {
     setVerdict({ status: 'Running...', message: 'Executing code against custom input...' });
     try {
       // 1. Start the run job
-      const { data: { jobId } } = await axios.post(`${API_URL}/api/submissions/run`, {
+      const runResponse = await axios.post(`${API_URL}/api/submissions/run`, {
         problemId: id,
         code,
         language,
         customInput,
       });
-
+      const jobId = runResponse?.data?.jobId;
+      if (!jobId) throw new Error("Failed to start the run job.");
       // 2. Poll for the result
       const result = await poll(async () => {
         const response = await axios.get(`${API_URL}/api/submissions/run/${jobId}/status`);
@@ -71,14 +72,14 @@ const Arena = () => {
         if (response.status === 200 && response.data) {
           // The API returns { success: bool, data: { status: 'Success', output: '...' } }
           // We return the inner `data` object to stop polling.
-          return response.data.data;
+          return response?.data?.data;
         }
         return null; // Continue polling
       });
 
-      setVerdict({ status: result.status, message: result.output || result.error });
+      setVerdict({ status: result?.status, message: result?.output || result?.error });
     } catch (err) {
-      const errorMessage = err.response?.data?.message || err.message || 'Failed to run code. Please try again.';
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Failed to run code. Please try again.';
       setVerdict({ status: 'Error', message: errorMessage });
     } finally {
       setIsEvaluating(false);
@@ -90,21 +91,22 @@ const Arena = () => {
     setVerdict({ status: 'Evaluating...', message: 'Testing against hidden test cases...' });
     try {
       // 1. Create the submission
-      const { data: { submissionId } } = await axios.post(`${API_URL}/api/submissions/submit`, {
+      const submitResponse = await axios.post(`${API_URL}/api/submissions/submit`, {
         problemId: id,
         code,
         language,
       });
-
+      const submissionId = submitResponse?.data?.submissionId;
+      if (!submissionId) throw new Error("Failed to create submission.");
       // 2. Poll for the submission status
       const result = await poll(async () => {
         const response = await axios.get(`${API_URL}/api/submissions/${submissionId}/status`);
         // A 204 (No Content) response means the submission is still being processed.
         // A 200 (OK) response means we have a status, but it might still be "Pending".
         if (response.status === 200 && response.data) {
-          const resultData = response.data.data; // The actual result is nested in `data`
+          const resultData = response?.data?.data; // The actual result is nested in `data`
           // Only stop polling if the verdict is no longer "Pending".
-          if (resultData && resultData.verdict !== 'Pending') {
+          if (resultData && resultData?.verdict !== 'Pending') {
             return resultData;
           }
         }
@@ -112,9 +114,9 @@ const Arena = () => {
         return null; // Continue polling
       });
 
-      setVerdict({ status: result.verdict, message: result.message || `Result: ${result.verdict}` });
+      setVerdict({ status: result?.verdict, message: result?.message || `Result: ${result?.verdict}` });
     } catch (err) {
-      const errorMessage = err.response?.data?.message || err.message || 'Submission failed. Please try again.';
+      const errorMessage = err.response?.data?.message || err.response?.data?.error || err.message || 'Submission failed. Please try again.';
       setVerdict({ status: 'Submission Error', message: errorMessage });
     } finally {
       setIsEvaluating(false);
@@ -196,8 +198,8 @@ const Arena = () => {
 
               {verdict && (
                 <div className={`p-3 rounded border ${
-                  verdict.status === 'Accepted' || verdict.status === 'Success' ? 'bg-green-900/20 border-green-800 text-green-400' : 
-                  verdict.status.includes('ing...') ? 'bg-blue-900/20 border-blue-800 text-blue-400 animate-pulse' : 
+                  verdict?.status === 'Accepted' || verdict?.status === 'Success' ? 'bg-green-900/20 border-green-800 text-green-400' : 
+                  verdict?.status?.includes('ing...') ? 'bg-blue-900/20 border-blue-800 text-blue-400 animate-pulse' : 
                   'bg-red-900/20 border-red-800 text-red-400'
                 }`}>
                   <div className="font-bold mb-1">{verdict.status}</div>

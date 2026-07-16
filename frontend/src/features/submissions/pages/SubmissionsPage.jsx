@@ -18,7 +18,7 @@ const SubmissionsPage = () => {
       const response = await fetch(`${API_URL}/api/problems/${id}`);
       if (!response.ok) throw new Error('Failed to fetch problem');
       const data = await response.json();
-      return data.data || data;
+      return data?.data || data;
     }
   });
 
@@ -32,7 +32,7 @@ const SubmissionsPage = () => {
             ← Back to Arena
           </Link>
           <span className="text-gray-600">|</span>
-          <span className="text-white font-bold text-lg">{problem?.problem_name || problem?.title || 'Loading...'}</span>
+          <span className="text-white font-bold text-lg">{problem?.problemName || problem?.problem_name || problem?.title || 'Loading...'}</span>
         </div>
       </nav>
 

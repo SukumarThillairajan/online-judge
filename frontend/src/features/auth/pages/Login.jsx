@@ -6,6 +6,7 @@ import axios from 'axios';
 export default function Login() {
     const { register, handleSubmit, formState: { errors, isSubmitting }, setError } = useForm();
     const navigate = useNavigate();
+    const API_URL = import.meta.env.VITE_API_BASE_URL || '';
     const [apiError, setApiError] = useState(null);
 
     const onSubmit = async (data) => {
@@ -17,7 +18,7 @@ export default function Login() {
                 password: data.password,
             };
 
-            await axios.post('/api/auth/login', payload);
+            await axios.post(`${API_URL}/api/auth/login`, payload);
 
             // If successful, navigate to the home/dashboard page
             navigate('/');

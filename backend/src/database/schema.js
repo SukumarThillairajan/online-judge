@@ -1,4 +1,4 @@
-import {pgEnum, pgTable, uuid, varchar, timestamp, text, jsonb, index} from 'drizzle-orm/pg-core';
+import {pgEnum, pgTable, uuid, varchar, timestamp, text, jsonb, index, integer} from 'drizzle-orm/pg-core';
 
 //------
 // Enums
@@ -73,10 +73,32 @@ export const submissions = pgTable("submissions", {
     language: languageEnum("language").notNull(),
     verdict: verdictEnum("verdict").default("Pending").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
-    errorDetails: jsonb("error_details")
+    errorDetails: jsonb("error_details"),
+
+    totalScore: integer("total_score").default(0).notNull(),
+    gamifiedRank: varchar("gamified_rank", {length: 15}).default("Unranked").notNull(),
+    scoreBreakdown: jsonb("score_breakdown").default({}).notNull() // Storing the AI's score breakdown as a JSON object, allowing more flexibility for future versions.
 }, (table) => ({
     userIndex: index("user_index").on(table.userId),
     problemIndex: index("problem_index").on(table.problemId),
     userProblemIndex: index("user_problem_index").on(table.userId, table.problemId), // a Composite Index
-    createdAtIndex: index("created_at_index").on(table.createdAt)
+    createdAtIndex: index("created_at_index").on(table.createdAt),
+
+    leaderboardIndex: index("leaderboard_index").on(table.problemId, table.totalScore.desc()) // a Composite Index
+}));
+
+export const interviewSessions = pgTable("interview_sessions", {
+    sessionId: uuid("session_id").primaryKey().defaultRandom(),
+    userId: uuid("user_id").references(() => users.userId).notNull(), // Foreign key to Users
+    problemId: uuid("problem_id").references(() => problems.problemId).notNull(), // Foreign key to Problems
+    submissionId: uuid("submission_id").references(() => submissions.submissionId), // Foreign key to Submissions. Allowing Null values, since users are in an interview session before submitting their solution.
+
+    chatHistory: jsonb("chat_history").default("[]").notNull(),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    endedAt: timestamp("ended_at"), // will be Null until the interview session is completed.
+}, (table) => ({
+    sessionUserIndex: index("session_user_index").on(table.userId),
+    sessionProblemIndex: index("session_problem_index").on(table.problemId),
+    sessionUserProblemIndex: index("session_user_problem_index").on(table.userId, table.problemId), // a Composite Index
+    sessionSubmissionIndex: index("session_submission_index").on(table.submissionId)
 }));

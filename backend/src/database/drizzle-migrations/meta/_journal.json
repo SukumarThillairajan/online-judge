@@ -43,6 +43,13 @@
       "when": 1783770263534,
       "tag": "0005_cuddly_mach_iv",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784533437326,
+      "tag": "0006_light_maestro",
+      "breakpoints": true
     }
   ]
 }

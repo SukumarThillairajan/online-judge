@@ -93,7 +93,7 @@ export const interviewSessions = pgTable("interview_sessions", {
     problemId: uuid("problem_id").references(() => problems.problemId).notNull(), // Foreign key to Problems
     submissionId: uuid("submission_id").references(() => submissions.submissionId), // Foreign key to Submissions. Allowing Null values, since users are in an interview session before submitting their solution.
 
-    chatHistory: jsonb("chat_history").default("[]").notNull(),
+    chatHistory: jsonb("chat_history").default("[]"),
     startedAt: timestamp("started_at").defaultNow().notNull(),
     endedAt: timestamp("ended_at"), // will be Null until the interview session is completed.
 }, (table) => ({

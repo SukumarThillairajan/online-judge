@@ -1,7 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import {requireAuth} from "../../middlewares/auth.middleware.js";
-import {streamInterviewChat, finishInterviewAndGrade} from "./interview.controller.js";
+import {startInterview, streamInterviewChat, finishInterviewAndGrade} from "./interview.controller.js";
 
 const router = express.Router();
 

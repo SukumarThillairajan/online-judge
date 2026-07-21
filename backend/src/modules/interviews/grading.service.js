@@ -48,7 +48,7 @@ export const evaluateInterview = async (chatHistory, problem, finalCode) => {
         .join("\n\n");
 
     const graderPrompt = `
-    You are a technical interviewer evaluating a candidate's performance.
+    You are a strict technical interviewer evaluating a candidate's performance.
     
     PROBLEM: ${problem.problemName}
     CANDIDATE'S FINAL CODE:
@@ -78,7 +78,7 @@ export const evaluateInterview = async (chatHistory, problem, finalCode) => {
     try {
         // Initializing the model in JSON mode
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
+            model: "gemini-3.6-flash",
             generationConfig: {
                 responseMimeType: "application/json" // this forces a valid JSON output from the model
             }

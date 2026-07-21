@@ -61,7 +61,7 @@ export const appendChatMessage = async (sessionId, role, content) => {
         history.push({ role, content });
 
         // Setting the updated history back to Redis with a TTL
-        await redisConnection.set(key, JSON.stringify(history), { EX: INTERVIEW_TTL });
+        await redisConnection.set(key, JSON.stringify(history), "EX", INTERVIEW_TTL);
 
         return history;
     }

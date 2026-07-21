@@ -14,7 +14,7 @@ export const startInterview = async (req, res) => {
             return res.status(400).json({ error: "Missing required field: problemId." });
         }
 
-        const userId = req.user.id; // Extracted safely from requireAuth middleware
+        const userId = req.user.userId; // Extracted safely from requireAuth middleware
 
         // Generate a unique session ID for this specific interview attempt
         const sessionId = uuidv4();
@@ -131,7 +131,7 @@ export const finishInterviewAndGrade = async (req, res) => {
         await db.transaction(async (tx) => {
             // Update the submission
             await tx.update(submissions)
-                .set({
+                .set({ 
                     totalScore: aiEvaluation.total_score,
                     gamifiedRank: gamifiedRank,
                     scoreBreakdown: JSON.stringify(aiEvaluation.score_breakdown) 

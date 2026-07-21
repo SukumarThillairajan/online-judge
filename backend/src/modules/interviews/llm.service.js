@@ -1,4 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import dotenv from 'dotenv';
+
+dotenv.config(); // Load environment variables from .env file
 
 // Initializing the SDK
 // Validating that the API key is set.
@@ -33,7 +36,7 @@ export const getInterviewerStream = async (chatHistory, problem, currentCode) =>
     \`\`\`
     
     YOUR STRICT RULES:
-    1. NEVER WRITE THE FULL CODE SOLUTION. You are an interviewer, not a code generator.
+    1. NEVER WRITE THE FULL CODE SOLUTION. You are a strict interviewer, not a code generator.
     2. Phase 1 (Brainstorming): Start by asking the user to explain their approach and the Time/Space complexity before they write code.
     3. Phase 2 (Coding): If they are stuck, ask guided, Socratic questions. Only provide tiny hints if explicitly requested.
     4. Phase 3 (Evaluation): If they submit code that fails edge cases, point out the flaw conceptually without fixing the code for them.
@@ -43,7 +46,7 @@ export const getInterviewerStream = async (chatHistory, problem, currentCode) =>
     try {
         // Initializing the model with system instructions
         const model = genAI.getGenerativeModel({
-            model: "gemini-1.5-flash",
+            model: "gemini-3.6-flash",
             systemInstruction: systemPrompt
         });
 

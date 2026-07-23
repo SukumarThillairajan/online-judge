@@ -1,14 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
-
-// Ensuring that the axios always attaches the HTTP-Only cookie to the request
-axios.defaults.withCredentials = true;
+import { apiClient } from '../../../api/apiClient';
 
 export const useAuth = () => {
     return useQuery({
         queryKey: ['authUser'],
         queryFn: async () => {
-            const response = await axios.get("/api/auth/verify");
+            // Use the configured apiClient which handles the base URL and credentials
+            const response = await apiClient.get("/api/auth/verify");
             return response.data.user;
         },
         retry: false, // If it fails (401 Unauthorized), don't keep retrying. Just fail.

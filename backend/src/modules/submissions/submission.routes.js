@@ -9,7 +9,8 @@ import {
     getSubmissionStatus,
     getMySubmissionsForProblem,
     getAllSubmissionsForProblem,
-    getMySubmissions
+    getMySubmissions,
+    getProblemLeaderboard
 } from "./submission.controller.js";
 
 const router = express.Router();
@@ -37,6 +38,10 @@ router.get("/problem/:problemId/me", requireAuth, getMySubmissionsForProblem);
 // Route: GET /api/submissions/problem/:problemId/all
 // Purpose:
 router.get("/problem/:problemId/all", requireAuth, getAllSubmissionsForProblem);
+
+// Route: GET /api/submissions/leaderboard/problem/:problemId
+// Purpose: Fetches the leaderboard for a specific problem.
+router.get("/leaderboard/problem/:problemId", requireAuth, getProblemLeaderboard);
 
 // Route: GET /api/submissions/:id/status
 // Purpose:

@@ -1,6 +1,6 @@
 import express from 'express';
 import {requireAuth, requireAdmin} from "../../middlewares/auth.middleware.js";
-import {getAllProblems, getProblemById, createProblem, deleteProblem} from "./problem.controller.js";
+import {getProblemsWithUserStatus, getAllProblems, getProblemById, createProblem, deleteProblem} from "./problem.controller.js";
 
 // Initializing the express router
 const router = express.Router();
@@ -9,13 +9,13 @@ const router = express.Router();
 // Public Routes (for Users)
 //--------------------------
 
-// Route: GET /api/problems/
-// Purpose: Fetch all problems for the dashboard
-router.get("/", getAllProblems);
+// Route: GET /api/problems/user-status
+// Purpose: Fetch all problems for the dashboard with the user's best rank for each.
+router.get("/user-status", requireAuth, getProblemsWithUserStatus);
 
 // Route: GET /api/problems/:id
 // Purpose: Fetch a problem by its problem ID
-router.get("/:id", getProblemById);
+router.get("/:id", requireAuth, getProblemById);
 
 //-------------
 // Admin Routes

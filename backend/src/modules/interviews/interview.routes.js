@@ -10,7 +10,7 @@ const router = express.Router();
 // but perfectly blocks malicious scripts or rapid-fire spam.
 const interviewLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 3, // limit each IP to 3 requests per windowMs
+    max: 6, // limit each IP to 6 requests per windowMs
     message: { error: 'Too many requests from this IP. Please try again after a minute.' },
     standardHeaders: true, 
     legacyHeaders: false, 

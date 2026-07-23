@@ -159,8 +159,19 @@ export const finishInterviewAndGrade = async (req, res) => {
         const userId = req.user.userId; // Extracted safely from requireAuth middleware
 
         const { sessionId, problemId, finalCode, language } = req.body;
-        if (!sessionId || !problemId || typeof finalCode === 'undefined') {
+        if (!sessionId || !problemId || !language || typeof finalCode === 'undefined') {
             return res.status(400).json({ success: false, error: "Missing required fields." });
+        }
+
+        const session = await db.query.interviewSessions.findFirst({
+            where: and(
+                eq(interviewSessions.sessionId, sessionId),
+                eq(interviewSessions.userId, userId),
+                eq(interviewSessions.problemId, problemId)
+            )
+        });
+        if (!session) {
+            return res.status(404).json({ error: "Interview session not found." });
         }
 
         // Fetching the problems and the full chat history from Redis

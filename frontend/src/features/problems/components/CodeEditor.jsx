@@ -6,6 +6,7 @@ const CodeEditor = ({ language, setLanguage, code, setCode, onRun, onSubmit, isE
   const defaultTemplates = {
     javascript: 'console.log("Hello World!");',
     python: 'print("Hello World!")',
+    c: '#include <stdio.h>\n\nint main() {\n    printf("Hello World!\\n");\n    return 0;\n}',
     cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}',
     java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}'
   };
@@ -28,6 +29,7 @@ const CodeEditor = ({ language, setLanguage, code, setCode, onRun, onSubmit, isE
         >
           <option value="javascript">JavaScript</option>
           <option value="python">Python</option>
+          <option value="c">C</option>
           <option value="cpp">C++</option>
           <option value="java">Java</option>
         </select>

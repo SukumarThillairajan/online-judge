@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { useParams, Link, useLocation } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import SubmissionsList from '../components/SubmissionsList';
@@ -7,7 +7,14 @@ import Leaderboard from '../components/Leaderboard';
 
 const SubmissionsPage = () => {
   const { id } = useParams();
-  const [activeTab, setActiveTab] = useState('me');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState('me'); // Default to 'me'
+
+  // On component mount, check the URL hash to set the active tab
+  useEffect(() => {
+    const hash = location.hash.substring(1); // remove the '#'
+    if (hash === 'leaderboard') setActiveTab('leaderboard');
+  }, [location.hash]);
 
   // React Query Magic: Because we already fetched this problem in the Arena, 
   // React Query will instantly load this from cache without making a new network request!
@@ -27,8 +34,8 @@ const SubmissionsPage = () => {
       {/* Top Navbar */}
       <nav className="h-16 bg-gray-900 flex items-center px-6 justify-between shadow-md shrink-0">
         <div className="flex items-center space-x-4">
-          <Link to={`/problems/${id}`} className="text-gray-400 hover:text-white transition-colors font-semibold text-sm">
-            ← Back to Arena
+          <Link to="/dashboard" className="text-gray-400 hover:text-white transition-colors font-semibold text-sm">
+            ← Back to Dashboard
           </Link>
           <span className="text-gray-600">|</span>
           <span className="text-white font-bold text-lg">{problem?.problem_name || problem?.title || 'Loading...'}</span>
@@ -42,7 +49,6 @@ const SubmissionsPage = () => {
         <div className="flex border-b border-gray-200 mb-6 shrink-0">
           {[
             { id: 'me', label: 'My Submissions' },
-            { id: 'all', label: 'All Submissions' },
             { id: 'leaderboard', label: 'Leaderboard' }
           ].map(tab => (
             <button
@@ -62,7 +68,6 @@ const SubmissionsPage = () => {
         {/* Tab Content Area */}
         <div className="grow bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           {activeTab === 'me' && <SubmissionsList problemId={id} type="me" />}
-          {activeTab === 'all' && <SubmissionsList problemId={id} type="all" />}
           {activeTab === 'leaderboard' && <Leaderboard problemId={id} />}
         </div>
 

@@ -140,16 +140,18 @@ export const streamInterviewChat = async (req, res) => {
  * @param {number} interval - The time in milliseconds between polls.
  * @returns {Promise<object>} A promise that resolves with the final submission object.
  */
-const pollForVerdict = (submissionId, retries = 20, interval = 1000) => {
-    return new Promise(async (resolve, reject) => {
+const pollForVerdict = async (submissionId, retries = 20, interval = 1000) => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
         const [submission] = await db.select().from(submissions).where(eq(submissions.submissionId, submissionId));
 
-        if (submission && submission.verdict !== 'Pending' && !submission.verdict.includes('ing')) {
-            return resolve(submission);
+        if (submission && submission.verdict !== "Pending") {
+            return submission;
         }
-        if (retries <= 0) return reject(new Error("Evaluation timed out waiting for a verdict."));
-        setTimeout(() => pollForVerdict(submissionId, retries - 1, interval).then(resolve).catch(reject), interval);
-    });
+        if (attempt === retries) {
+            throw new Error("Evaluation timed out waiting for a verdict.");
+        }
+        await new Promise((resolve) => setTimeout(resolve, interval));
+    }
 };
 
 export const finishInterviewAndGrade = async (req, res) => {

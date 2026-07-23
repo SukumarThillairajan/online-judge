@@ -1,15 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import axios from 'axios';
 import { useQuery } from '@tanstack/react-query';
 
+import { apiClient } from '../../../api/apiClient.js';
 import CodeEditor from '../components/CodeEditor.jsx';
 import AiChatbox from '../components/AiChatbox.jsx';
 import InterviewTimer from '../components/InterviewTimer.jsx';
 import EvaluationModal from '../components/EvaluationModal.jsx';
 
 const Arena = () => {
-  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
   const { id: problemId } = useParams();
 
   // --- Master Interview State ---
@@ -37,7 +36,7 @@ const Arena = () => {
   const { data: problem, isLoading, error } = useQuery({
     queryKey: ['problem', problemId],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/problems/${problemId}`);
+      const response = await fetch(`${apiClient.defaults.baseURL}/api/problems/${problemId}`);
       if (!response.ok) throw new Error('Failed to fetch problem details');
       const data = await response.json();
       return data.data || data;
@@ -48,7 +47,7 @@ const Arena = () => {
   useEffect(() => {
     const initializeSession = async () => {
       try {
-        const res = await axios.post(`${API_URL}/api/interviews/start`, { problemId }, { withCredentials: true });
+        const res = await apiClient.post('/api/interviews/start', { problemId });
         // Account for different backend JSON response wrappers
         setSessionId(res.data.sessionId || res.data.data?.sessionId);
         setIsInterviewActive(true);
@@ -59,7 +58,7 @@ const Arena = () => {
     if (problemId && !sessionId) {
       initializeSession();
     }
-  }, [problemId, sessionId, API_URL]);
+  }, [problemId, sessionId]);
 
   // Callback for child components to signal user activity
   const handleUserActivity = () => {
@@ -119,16 +118,16 @@ const Arena = () => {
     setVerdict({ status: 'Evaluating...', message: 'Running custom code...' });
 
     try {
-      const runRes = await axios.post(`${API_URL}/api/submissions/run`, {
+      const runRes = await apiClient.post('/api/submissions/run', {
         language,
         code,
         customInput
-      }, { withCredentials: true });
+      });
 
       const jobId = runRes.data.jobId || runRes.data.data?.jobId;
 
       const finalResult = await poll(async () => {
-        const statusRes = await axios.get(`${API_URL}/api/submissions/run/${jobId}/status`, { withCredentials: true });
+        const statusRes = await apiClient.get(`/api/submissions/run/${jobId}/status`);
         const currentStatus = statusRes.data.status || statusRes.data.data?.status;
 
         if (currentStatus !== 'Pending' && !currentStatus.includes('ing')) {
@@ -194,18 +193,18 @@ const Arena = () => {
 
     try {
       // Step A: Submit to DB and Docker Queue
-      const submitRes = await axios.post(`${API_URL}/api/submissions/submit`, {
+      const submitRes = await apiClient.post('/api/submissions/submit', {
         problemId,
         language,
         code,
         sessionId // Pass the active session ID with the submission
-      }, { withCredentials: true });
+      });
 
       const submissionId = submitRes.data.submissionId || submitRes.data.data?.submissionId;
 
       // Step B: Wait for execution engine
       const finalResult = await poll(async () => {
-        const statusRes = await axios.get(`${API_URL}/api/submissions/${submissionId}/status`, { withCredentials: true });
+        const statusRes = await apiClient.get(`/api/submissions/${submissionId}/status`);
         const currentVerdict = statusRes.data.verdict || statusRes.data.data?.verdict;
 
         if (currentVerdict !== 'Pending' && !currentVerdict.includes('ing')) {
@@ -278,12 +277,12 @@ const Arena = () => {
     setIsGrading(true);
 
     try {
-      const res = await axios.post(`${API_URL}/api/interviews/finish`, {
+      const res = await apiClient.post('/api/interviews/finish', {
         sessionId,
         problemId,
         finalCode: code,
         language: language
-      }, { withCredentials: true });
+      });
 
       const evaluationResult = res.data.data || res.data;
 

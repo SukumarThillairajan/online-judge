@@ -1,16 +1,13 @@
 //import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import { apiClient } from '../../../api/apiClient';
 
 const Dashboard = () => {
-  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
-
   const { data: problems = [], isLoading, error } = useQuery({
     queryKey: ['problems'], // This is the unique "cache key"
     queryFn: async () => {
-      const response = await axios.get(`${API_URL}/api/problems/user-status`, { withCredentials: true });
-      // axios wraps the response body in a `data` property.
+      const response = await apiClient.get('/api/problems/user-status');
       return response.data.data || [];
     },
   });

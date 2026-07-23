@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
+import { apiClient } from '../../../api/apiClient';
 import { useQuery } from '@tanstack/react-query';
 
 import SubmissionsList from '../components/SubmissionsList';
@@ -21,9 +22,8 @@ const SubmissionsPage = () => {
   const { data: problem } = useQuery({
     queryKey: ['problem', id],
     queryFn: async () => {
-      const response = await fetch(`/api/problems/${id}`);
-      if (!response.ok) throw new Error('Failed to fetch problem');
-      const data = await response.json();
+      const response = await apiClient.get(`/api/problems/${id}`);
+      const data = response.data;
       return data.data || data;
     }
   });

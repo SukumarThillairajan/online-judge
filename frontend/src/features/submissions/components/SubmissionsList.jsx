@@ -47,11 +47,11 @@ const SubmissionsList = ({ problemId, type }) => {
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50 sticky top-0 shadow-sm z-10">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Rank</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verdict</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Language</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
             <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted At</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
@@ -82,9 +82,6 @@ const SubmissionsList = ({ problemId, type }) => {
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-mono">
                 {sub.language}
               </td>
-              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                {new Date(sub.createdAt).toLocaleString()}
-              </td>
               <td className="px-6 py-4 whitespace-nowrap text-center">
                 <button
                   onClick={() => setSelectedSubmission(sub)}
@@ -92,6 +89,9 @@ const SubmissionsList = ({ problemId, type }) => {
                 >
                   View
                 </button>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                {new Date(sub.createdAt).toLocaleString()}
               </td>
             </tr>
           ))}

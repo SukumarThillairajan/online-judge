@@ -2,10 +2,11 @@ import { useState, useRef, useEffect, forwardRef, useImperativeHandle } from 're
 import ReactMarkdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
+import { apiClient } from '../../../api/apiClient';
 
 // Wrapping the AiChatBox component with forwardRef to allow parent components to call its methods
 const AiChatbox = forwardRef(({ sessionId, problem, currentCode, isInterviewActive, onUserActivity }, ref) => {
-    const API_URL = import.meta.env.VITE_API_BASE_URL || "";
+    const API_URL = apiClient.defaults.baseURL;
 
     const [messages, setMessages] = useState([]);
     const [inputMessage, setInputMessage] = useState('');
@@ -22,7 +23,7 @@ const AiChatbox = forwardRef(({ sessionId, problem, currentCode, isInterviewActi
     // Initial prompt trigger: Ask the AI to introduce the problem when the session starts
     useEffect(() => {
         if (sessionId && messages.length === 0 && !initialMessageSent.current) {
-            handleSendMessage("Hi! I'm ready to begin the interview. Please present the problem.", true);
+            handleSendMessage("Hi! I'm ready to begin the interview. Please present the problem.", true, true);
             initialMessageSent.current = true; // Set flag to prevent re-triggering
         }
     }, [sessionId, isInterviewActive]);
@@ -30,11 +31,11 @@ const AiChatbox = forwardRef(({ sessionId, problem, currentCode, isInterviewActi
     // Expose the sendGhostPrompt function to the parent component (Arena.jsx)
     useImperativeHandle(ref, () => ({
         sendGhostPrompt: (systemObservation) => {
-            handleSendMessage(systemObservation, true);
+            handleSendMessage(systemObservation, true, false);
         }
     }));
 
-    const handleSendMessage = async (textToSend, isGhostPrompt = false) => {
+    const handleSendMessage = async (textToSend, isGhostPrompt = false, isInitialPrompt = false) => {
         const messageText = textToSend || inputMessage.trim();
         // Use the ref for an immediate, non-stale check
         if (!messageText.trim() || isStreamingRef.current) return;
@@ -43,7 +44,8 @@ const AiChatbox = forwardRef(({ sessionId, problem, currentCode, isInterviewActi
         setIsStreaming(true); // Update state for UI changes
 
         // 1. Append User Message immediately to local UI (unless it's a hidden system prompt)
-        if (!isGhostPrompt) {
+        // We also don't want to show the initial "Hi! Please present the problem" message.
+        if (!isGhostPrompt && !isInitialPrompt) {
             const userMsg = { role: 'user', content: messageText };
             setMessages((prev) => [...prev, userMsg]);
             if (onUserActivity) onUserActivity(); // Signal to parent that user was active

@@ -36,17 +36,18 @@ const Arena = () => {
   const { data: problem, isLoading, error } = useQuery({
     queryKey: ['problem', problemId],
     queryFn: async () => {
+      // Use the configured apiClient which uses axios
       const response = await apiClient.get(`/api/problems/${problemId}`);
-      if (!response.ok) throw new Error('Failed to fetch problem details');
-      const data = await response.json();
-      return data.data || data;
+      // Axios responses are already parsed. The data is in `response.data`.
+      // We don't need to check `response.ok` because axios throws an error for non-2xx status codes.
+      return response.data.data || response.data;
     },
     retry: (failureCount, error) => { // Stops the console from flooding with auth errors
       if (error.response?.status === 401) {
         console.warn("Unauthorized access while fetching problem details.");
         return false; // Stop retrying on 401 Unauthorized
       }
-
+      return failureCount < 3; // Default retry for other network errors
     }
   });
 

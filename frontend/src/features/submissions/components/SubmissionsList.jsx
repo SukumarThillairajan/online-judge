@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../../../api/apiClient';
 
 // A tiny, reusable button component that handles its own "Copied!" state
 const CopyButton = ({ textToCopy }) => {
@@ -29,10 +30,8 @@ const SubmissionsList = ({ problemId, type }) => {
   const { data: submissions = [], isLoading, error } = useQuery({
     queryKey: ['submissions', problemId, type],
     queryFn: async () => {
-      const response = await fetch(`/api/submissions/problem/${problemId}/${type}`);
-      if (!response.ok) throw new Error('Failed to fetch submissions');
-      const data = await response.json();
-      return data.data || [];
+      const response = await apiClient.get(`/api/submissions/problem/${problemId}/${type}`);
+      return response.data.data || [];
     }
   });
 

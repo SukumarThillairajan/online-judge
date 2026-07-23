@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import { apiClient } from '../../../api/apiClient';
 
 // Using react-syntax-highlighter for a better code viewing experience.
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const Leaderboard = ({ problemId }) => {
-  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
-
   // State for the code-viewing modal
   const [selectedSubmission, setSelectedSubmission] = useState(null);
 
   const { data: leaderboard = [], isLoading, error } = useQuery({
     queryKey: ['leaderboard', problemId],
     queryFn: async () => {
-      const response = await axios.get(`${API_URL}/api/submissions/leaderboard/problem/${problemId}`, { withCredentials: true });
+      const response = await apiClient.get(`/api/submissions/leaderboard/problem/${problemId}`);
       return response.data.data || [];
     },
     // Keep data fresh but don't refetch too aggressively

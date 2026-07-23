@@ -36,10 +36,17 @@ const Arena = () => {
   const { data: problem, isLoading, error } = useQuery({
     queryKey: ['problem', problemId],
     queryFn: async () => {
-      const response = await fetch(`${apiClient.defaults.baseURL}/api/problems/${problemId}`);
+      const response = await apiClient.get(`/api/problems/${problemId}`);
       if (!response.ok) throw new Error('Failed to fetch problem details');
       const data = await response.json();
       return data.data || data;
+    },
+    retry: (failureCount, error) => { // Stops the console from flooding with auth errors
+      if (error.response?.status === 401) {
+        console.warn("Unauthorized access while fetching problem details.");
+        return false; // Stop retrying on 401 Unauthorized
+      }
+
     }
   });
 

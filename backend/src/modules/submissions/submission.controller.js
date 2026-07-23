@@ -1,7 +1,7 @@
 import {db} from "../../database/db_connector.js";
 import {submissions, problems, languageEnum, users} from "../../database/schema.js";
 import {eq, and, desc, asc, sql} from 'drizzle-orm';
-import {v4 as uuidv4} from 'uuid';
+import crypto from 'crypto';
 import {submissionQueue, redisConnection} from "../../queues/submissionQueue.js";
 
 export const runCustomCode = async(req, res) => {
@@ -22,7 +22,7 @@ export const runCustomCode = async(req, res) => {
             });
         }
 
-        const secureJobId = uuidv4();
+        const secureJobId = crypto.randomUUID(); // Generate a secure UUID for the job ID
         const job = await submissionQueue.add("run-code", {
             code,
             language,

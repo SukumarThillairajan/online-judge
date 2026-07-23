@@ -1,6 +1,5 @@
 import {exec} from 'child_process';
 import util from 'util';
-import {v4 as uuidv4} from 'uuid';
 import path from 'path';
 import fs from 'fs/promises';
 
@@ -28,7 +27,7 @@ export const languageConfigs = {
         fileName: "Main.java",
         dockerImage: "amazoncorretto:21-alpine",
         compileCommand: "javac",
-        compileArgs: ["Xlint:all", "-Werror", "/app/Main.java"],
+        compileArgs: ["-Xlint:all", "-Werror", "/app/Main.java"],
         runCommand: "java",
         runArgs: ["Main"]
     },
@@ -51,7 +50,7 @@ export const languageConfigs = {
 }
 
 // Compiles the code (if applicable)
-export const compileCode = async(tempDirPath, language) => {
+export const compileCode = async(hostDirPath, language) => {
     const config = languageConfigs[language];
 
     // If the language doesn't have a compileCommand, immediately return success for compilation.
@@ -60,8 +59,7 @@ export const compileCode = async(tempDirPath, language) => {
     }
 
     const fullCompileCommand = `${config.compileCommand} ${config.compileArgs.join(" ")}`;
-    const compileDockerCommand = `docker run --rm -v "${tempDirPath}://app" -w //app ${config.dockerImage} sh -c "${fullCompileCommand}"`; // using "//" for paths that should be interpreted literally as absolute paths within the container's filesystem.
-
+    const compileDockerCommand = `docker run --rm -v "${hostDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullCompileCommand}"`; 
     try {
         await execPromise(compileDockerCommand, {timeout: 10000}); // max 10s for compilation
         return {success: true};
@@ -76,15 +74,15 @@ export const compileCode = async(tempDirPath, language) => {
 };
 
 // Runs the code against a single testcase
-export const runCode = async(tempDirPath, language, inputData) => {
+export const runCode = async(workerDirPath, hostDirPath, language, inputData) => {
     const config = languageConfigs[language];
 
     // Writing the test case input into a file
-    const inputFilePath = path.join(tempDirPath, "input.txt");
+    const inputFilePath = path.join(workerDirPath, "input.txt");
     await fs.writeFile(inputFilePath, inputData || "");
 
     const fullRunCommand = `${config.runCommand} ${config.runArgs.join(" ")}`;
-    const runDockerCommand = `docker run --rm --network none --memory 256m -v "${tempDirPath}://app" -w //app ${config.dockerImage} sh -c "${fullRunCommand} < //app/input.txt"`;
+    const runDockerCommand = `docker run --rm --network none --memory 256m -v "${hostDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullRunCommand} < /app/input.txt"`;
 
     try {
         const {stdout, stderr} = await execPromise(runDockerCommand, { timeout: 3000 }); // 3-second timeout

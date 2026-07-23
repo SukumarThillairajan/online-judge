@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useLocation } from 'react-router-dom';
-import { apiClient } from '../../../api/apiClient';
+import { apiClient } from '../../../api/apiClient.js';
 import { useQuery } from '@tanstack/react-query';
 
 import SubmissionsList from '../components/SubmissionsList';

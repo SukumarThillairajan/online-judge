@@ -19,8 +19,8 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  * @param {String} systemObservation - The observation made by the system.
  */
 export const getInterviewerStream = async (chatHistory, problem, currentCode, systemObservation) => {
-    if (!Array.isArray(chatHistory) || chatHistory.length === 0 || !problem?.problemName) {
-        console.error("getInterviewerStream called with invalid or empty parameters.", { hasHistory: chatHistory?.length > 0, hasProblem: !!problem });
+    if (!Array.isArray(chatHistory) || !problem?.problemName) {
+        console.error("getInterviewerStream called with invalid parameters.", { hasHistory: Array.isArray(chatHistory) && chatHistory.length > 0, hasProblem: !!problem });
         throw new Error("Invalid parameters provided to get interviewer stream.");
     }
 

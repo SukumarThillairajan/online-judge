@@ -39,11 +39,14 @@ export const register = async (req, res) => {
         res.cookie("token", token, {
             httpOnly: true, // prevents JavaScript from accessing the cookie, enhancing security against XSS attacks
             secure: process.env.NODE_ENV === "production", // 'secure' attribute ensures the cookie is sent over HTTPS only. It's set to true in production for added security.
-            sameSite: "strict", // cookie will only be sent with same-site requests (not with any cross-site requests), enhancing CSRF protection.
+            // sameSite: "strict", // cookie will only be sent with same-site requests (not with any cross-site requests), enhancing CSRF protection.
+            // For cross-site cookie to be sent, sameSite must be 'none' and secure must be 'true'.
+            // In development, sameSite can be 'lax' and secure can be 'false'.
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             maxAge: 24 * 60 * 60 * 1000 // 1 day in milliseconds
         });
 
-        res.status(201).json({success: true,message: "Registration successful", user: newUser});
+        res.status(201).json({success: true, message: "Registration successful", user: newUser});
     }
     catch (error) {
         // Unique violation error code for PostgreSQL
@@ -86,7 +89,7 @@ export const login = async (req, res) => {
         res.cookie("token", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
-            sameSite: "strict",
+            sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             maxAge: 24 * 60 * 60 * 1000 // 1 day in ms
         })
 
@@ -111,7 +114,7 @@ export const logout = (req, res) => {
     res.clearCookie("token", {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "strict",
+        sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
     });
 
     res.status(200).json({success: true,message: "Logout successful"});

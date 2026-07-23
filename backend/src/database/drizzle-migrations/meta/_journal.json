@@ -57,6 +57,20 @@
       "when": 1784635679806,
       "tag": "0007_white_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784774673813,
+      "tag": "0008_young_young_avengers",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784785062303,
+      "tag": "0009_fearless_the_santerians",
+      "breakpoints": true
     }
   ]
 }

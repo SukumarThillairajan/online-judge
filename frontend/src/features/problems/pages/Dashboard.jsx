@@ -1,6 +1,7 @@
 //import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 
 const Dashboard = () => {
   const API_URL = import.meta.env.VITE_API_BASE_URL || '';
@@ -8,12 +9,9 @@ const Dashboard = () => {
   const { data: problems = [], isLoading, error } = useQuery({
     queryKey: ['problems'], // This is the unique "cache key"
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/problems`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch problems');
-      }
-      const data = await response.json();
-      return data.data || [];
+      const response = await axios.get(`${API_URL}/api/problems/user-status`, { withCredentials: true });
+      // axios wraps the response body in a `data` property.
+      return response.data.data || [];
     },
   });
 
@@ -27,6 +25,17 @@ const Dashboard = () => {
     }
   };
 
+  // Helper function to render the status/rank badge
+  const getRankBadge = (rank) => {
+    if (!rank || rank === 'Unranked') {
+      return <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600 border border-gray-300">Unattempted</span>;
+    }
+    // You can add more colors for different ranks later!
+    return (
+      <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 text-blue-800 border border-blue-300">{rank}</span>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-5xl mx-auto">
@@ -39,7 +48,7 @@ const Dashboard = () => {
 
         {/* State Handling: Loading & Error */}
         {isLoading && <p className="text-blue-600 font-medium animate-pulse">Loading problems...</p>}
-        {error && <div className="bg-red-50 text-red-700 p-4 rounded-md border border-red-200">{error}</div>}
+        {error && <div className="bg-red-50 text-red-700 p-4 rounded-md border border-red-200">{error.message || 'An error occurred while fetching problems.'}</div>}
 
         {/* The Problem Table */}
         {!isLoading && !error && (
@@ -59,7 +68,7 @@ const Dashboard = () => {
                     
                     {/* Status Column (Placeholder for V1) */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="text-gray-400 font-bold" title="Not Attempted">−</span>
+                      {getRankBadge(problem.bestRank)}
                     </td>
 
                     {/* Title Column */}

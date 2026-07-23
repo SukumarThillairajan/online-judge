@@ -41,6 +41,7 @@ export const problems = pgTable("problems", {
     problemName: varchar("problem_name", {length: 255}).notNull().unique(),
     difficulty: difficultyEnum("difficulty").notNull(),
     statement: text("statement").notNull(),
+    constraints: text("constraints"), // New field for problem constraints
     sampleTestCases: jsonb("sample_test_cases").notNull() // storing the sample test cases as a JSON object, allowing more flexibility for V2.
 }, 
 (table) => {
@@ -68,6 +69,7 @@ export const submissions = pgTable("submissions", {
     submissionId: uuid("submission_id").primaryKey().defaultRandom(),
     userId: uuid("user_id").references(() => users.userId).notNull(), // Foreign key to Users
     problemId: uuid("problem_id").references(() => problems.problemId).notNull(), // Foreign key to Problems
+    sessionId: uuid("session_id").references(() => interviewSessions.sessionId), // Foreign key to interview_sessions. Can be null.
 
     code: text("code").notNull(),
     language: languageEnum("language").notNull(),

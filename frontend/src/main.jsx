@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import App from "./App.jsx";
 
 import "./index.css";
+import 'katex/dist/katex.min.css'; // Import KaTeX CSS for math rendering
 
 const queryClient = new QueryClient();
 

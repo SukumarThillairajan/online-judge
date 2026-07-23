@@ -6,11 +6,11 @@ import {startInterview, streamInterviewChat, finishInterviewAndGrade} from "./in
 const router = express.Router();
 
 // Rate limiter to prevent abuse of the AI endpoints.
-// 3 requests per minute from a single IP is generous for a human user
+// 6 requests per minute from a single IP is generous for a human user
 // but perfectly blocks malicious scripts or rapid-fire spam.
 const interviewLimiter = rateLimit({
     windowMs: 60 * 1000, // 1 minute
-    max: 3, // limit each IP to 3 requests per windowMs
+    max: 6, // limit each IP to 6 requests per windowMs
     message: { error: 'Too many requests from this IP. Please try again after a minute.' },
     standardHeaders: true, 
     legacyHeaders: false, 

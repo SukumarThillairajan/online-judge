@@ -1,6 +1,6 @@
 import express from 'express';
 import {requireAuth, requireAdmin} from "../../middlewares/auth.middleware.js";
-import {getProblemsWithUserStatus, getAllProblems, getProblemById, createProblem, deleteProblem} from "./problem.controller.js";
+import {getProblemsWithUserStatus, getProblemById, createProblem, deleteProblem} from "./problem.controller.js";
 
 // Initializing the express router
 const router = express.Router();

@@ -52,9 +52,21 @@ export const streamInterviewChat = async (req, res) => {
             return res.status(400).json({ error: "Request body is missing or not in JSON format." });
         }
 
+        const userId = req.user.userId;
         const { sessionId, problemId, currentCode, message, systemObservation } = req.body;
-        if (!sessionId || !problemId || !message) {
-            return res.status(400).json({ error: "Missing required fields: sessionId, problemId, or message." });
+        if (!sessionId || !problemId || typeof message === "undefined") {
+            return res.status(400).json({ error: "Missing required fields: sessionId or problemId." });
+        }
+
+        const session = await db.query.interviewSessions.findFirst({
+            where: and(
+                eq(interviewSessions.sessionId, sessionId),
+                eq(interviewSessions.userId, userId),
+                eq(interviewSessions.problemId, problemId)
+            )
+        });
+        if (!session) {
+            return res.status(404).json({ error: "Interview session not found." });
         }
 
         // Fetching the problem from the database
@@ -64,7 +76,6 @@ export const streamInterviewChat = async (req, res) => {
         if (!problem) {
             return res.status(404).json({ error: "Problem not found." });
         }
-
         // Saving the user's message to Redis
         // Only saving the human 'message' to Redis if it actually exists.
         // If the user just clicked "Submit" without typing a chat message, 'message' will be empty.

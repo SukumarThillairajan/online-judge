@@ -15,6 +15,13 @@ export const startInterview = async (req, res) => {
             return res.status(400).json({ error: "Missing required field: problemId." });
         }
 
+        const problem = await db.query.problems.findFirst({
+            where: eq(problems.problemId, problemId)
+        });
+        if (!problem) {
+            return res.status(404).json({ error: "Problem not found." });
+        }
+
         const userId = req.user.userId; // Extracted safely from requireAuth middleware
 
         // Generate a unique session ID for this specific interview attempt

@@ -7,6 +7,7 @@ import CodeEditor from '../components/CodeEditor.jsx';
 import AiChatbox from '../components/AiChatbox.jsx';
 import InterviewTimer from '../components/InterviewTimer.jsx';
 import EvaluationModal from '../components/EvaluationModal.jsx';
+import LeaveWarningModal from '../components/LeaveWarningModal.jsx';
 
 const Arena = () => {
   const { id: problemId } = useParams();
@@ -32,6 +33,9 @@ const Arena = () => {
   const [isGrading, setIsGrading] = useState(false);
   const [finalSubmissionId, setFinalSubmissionId] = useState(null);
 
+  // --- Leave Warning Modal State ---
+  const [showLeaveWarning, setShowLeaveWarning] = useState(false);
+
   // Fetch Problem Details
   const { data: problem, isLoading, error } = useQuery({
     queryKey: ['problem', problemId],
@@ -51,21 +55,49 @@ const Arena = () => {
     }
   });
 
-  // Start the interview session on mount
+  // Initialize Interview Session
   useEffect(() => {
-    const initializeSession = async () => {
+    if (sessionId || !problemId) return; // Don't re-initialize if we already have a session or no problemId
+
+    // 1. Check if a session already exists in localStorage for this specific problem
+    const savedSession = localStorage.getItem('activeInterviewSession');
+
+    if (savedSession) {
+      const parsedSession = JSON.parse(savedSession);
+      // 2. Only resume if it's the exact same problem ID!
+      if (parsedSession.problemId === problemId) {
+        setSessionId(parsedSession.sessionId);
+        setIsInterviewActive(true);
+        return; // Exit early, do not hit the backend!
+      } else {
+        // If they are on a different problem, clear the old ghost session
+        localStorage.removeItem('activeInterviewSession');
+      }
+    }
+
+    // 3. If no valid session exists, start a new one
+    const startNewInterview = async () => {
       try {
         const res = await apiClient.post('/api/interviews/start', { problemId });
-        // Account for different backend JSON response wrappers
-        setSessionId(res.data.sessionId || res.data.data?.sessionId);
-        setIsInterviewActive(true);
-      } catch (err) {
-        console.error("Failed to start interview session", err);
+        if (res.data && res.data.data?.sessionId) {
+          const newSessionId = res.data.data?.sessionId;
+          setSessionId(newSessionId);
+          setIsInterviewActive(true);
+
+          // 4. SAVE IT TO LOCAL STORAGE!
+          localStorage.setItem('activeInterviewSession', JSON.stringify({
+            sessionId: newSessionId,
+            problemId: problemId
+          }));
+        }
+      } catch (error) {
+        console.error("Failed to start interview session:", error);
       }
     };
-    if (problemId && !sessionId) {
-      initializeSession();
-    }
+
+    startNewInterview();
+    // Adding sessionId back to the dependency array ensures that when we 
+    // call setSessionId(), the effect re-runs, sees the new ID, and safely exits!
   }, [problemId, sessionId]);
 
   // Callback for child components to signal user activity
@@ -296,10 +328,11 @@ const Arena = () => {
 
       // The backend should return the newly created submission ID for the modal button
       if (evaluationResult.submissionId) {
-        setFinalSubmissionId(evaluationResult.submissionId); 
+        setFinalSubmissionId(evaluationResult.submissionId);
       }
 
       setEvaluationData(evaluationResult);
+      localStorage.removeItem('activeInterviewSession'); // Clear the ghost session
     } catch (err) {
       console.error("Failed to grade interview:", err);
       // The modal will show an error state if evaluationData is null
@@ -307,7 +340,7 @@ const Arena = () => {
       if (err.response?.status === 429) {
         alert("The AI is currently analyzing your last code submission! Please wait 5 seconds and try ending the interview again.");
         setShowEvaluationModal(false); // Close modal so they can try again
-      } 
+      }
       else {
         alert("An error occurred while grading. Please try again.");
         setShowEvaluationModal(false);
@@ -333,12 +366,21 @@ const Arena = () => {
         leaderboardUrl={`/submissions/${problemId}#leaderboard`}
       />
 
+      <LeaveWarningModal
+        isOpen={showLeaveWarning}
+        onClose={() => setShowLeaveWarning(false)}
+        onEndInterview={handleEndInterview}
+      />
+
       {/* Top Navbar */}
       <nav className="h-12 bg-gray-800 border-b border-gray-700 flex items-center px-4 justify-between shrink-0">
         <div className="flex items-center space-x-4">
-          <Link to="/dashboard" className="text-gray-400 hover:text-white transition-colors font-semibold text-sm">
-            ← Dashboard
-          </Link>
+          <button
+            onClick={() => setShowLeaveWarning(true)}
+            className="text-gray-400 hover:text-white text-sm font-medium transition-colors"
+          >
+            ← Go back to dashboard
+          </button>
           <span className="text-gray-500">|</span>
           <span className="text-white font-bold tracking-wide">Mock Interview Mode</span>
         </div>
@@ -415,8 +457,8 @@ const Arena = () => {
 
                 {verdict && (
                   <div className={`p-3 rounded border ${verdict.status === 'Accepted' || verdict.status === 'Success' ? 'bg-green-900/20 border-green-800 text-green-400' :
-                      verdict.status.includes('ing...') ? 'bg-blue-900/20 border-blue-800 text-blue-400 animate-pulse' :
-                        'bg-red-900/20 border-red-800 text-red-400'
+                    verdict.status.includes('ing...') ? 'bg-blue-900/20 border-blue-800 text-blue-400 animate-pulse' :
+                      'bg-red-900/20 border-red-800 text-red-400'
                     }`}>
                     <div className="font-bold mb-1">{verdict.status}</div>
                     <div className="whitespace-pre-wrap font-semibold">{verdict.message}</div>

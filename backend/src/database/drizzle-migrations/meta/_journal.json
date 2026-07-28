@@ -71,6 +71,13 @@
       "when": 1784785062303,
       "tag": "0009_fearless_the_santerians",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785247109746,
+      "tag": "0010_add_internal_system_error_verdict",
+      "breakpoints": true
     }
   ]
 }

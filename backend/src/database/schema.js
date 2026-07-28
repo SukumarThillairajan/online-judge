@@ -15,7 +15,8 @@ export const verdictEnum = pgEnum("verdict", [
     "Runtime Error",
     "Time Limit Exceeded",
     "Memory Limit Exceeded",
-    "Wrong Answer"
+    "Wrong Answer",
+    "Internal System Error"
 ]);
 
 //-------

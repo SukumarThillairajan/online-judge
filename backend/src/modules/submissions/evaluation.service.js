@@ -69,7 +69,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
     catch (error) {
         console.error("Evaluation error: ", error);
         return {
-            verdict: "System Error",
+            verdict: "Internal System Error",
             details: error.message
         };
     }
@@ -79,7 +79,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
             await fs.rm(workerDirPath, {recursive: true, force: true});
         }
         catch (cleanupError) {
-            console.error(`Failed to clean up the temp directory ${tempDirPath}: `, cleanupError);
+            console.error(`Failed to clean up the temp directory ${workerDirPath}: `, cleanupError);
         }
     }
 };
@@ -131,7 +131,7 @@ export const runCustomCode = async (code, language, customInput) => {
     catch (error) {
         console.error("Error running custom code: ", error);
         return {
-            error: "System Error",
+            error: "Internal System Error",
             output: error.message
         };
     }
@@ -141,7 +141,7 @@ export const runCustomCode = async (code, language, customInput) => {
             await fs.rm(workerDirPath, {recursive: true, force: true});
         }
         catch (cleanupError) {
-            console.error(`Failed to remove the temp directory ${tempDirPath}: `, cleanupError);
+            console.error(`Failed to remove the temp directory ${workerDirPath}: `, cleanupError);
         }
     }
 };

@@ -55,53 +55,21 @@ const Arena = () => {
     }
   });
 
-  // Initialize Interview Session
+  // Start the interview session on mount
   useEffect(() => {
-    if (sessionId || !problemId) return; // Don't re-initialize if we already have a session or no problemId
-
-    // 1. Check if a session already exists in localStorage for this specific problem
-    const savedSession = localStorage.getItem('activeInterviewSession');
-
-    if (savedSession) {
-      const parsedSession = JSON.parse(savedSession);
-      // 2. Only resume if it's the exact same problem ID!
-      if (parsedSession.problemId === problemId) {
-        setSessionId(parsedSession.sessionId);
-        setIsInterviewActive(true);
-        return; // Exit early, do not hit the backend!
-      } else {
-        // If they are on a different problem, clear the old ghost session
-        localStorage.removeItem('activeInterviewSession');
-      }
-    }
-
-    // 3. If no valid session exists, start a new one
-    const startNewInterview = async () => {
+    const initializeSession = async () => {
       try {
         const res = await apiClient.post('/api/interviews/start', { problemId });
-
-        const newSessionId = res.data?.sessionId || res.data.data?.sessionId;
-        if (newSessionId) {
-          setSessionId(newSessionId);
-          setIsInterviewActive(true);
-
-          // 4. SAVE IT TO LOCAL STORAGE!
-          localStorage.setItem('activeInterviewSession', JSON.stringify({
-            sessionId: newSessionId,
-            problemId: problemId
-          }));
-        }
-        else {
-          console.error("Failed to retrieve sessionId from backend response:", res.data);
-        }
-      } catch (error) {
-        console.error("Failed to start interview session:", error);
+        // Account for different backend JSON response wrappers
+        setSessionId(res.data.sessionId || res.data.data?.sessionId);
+        setIsInterviewActive(true);
+      } catch (err) {
+        console.error("Failed to start interview session", err);
       }
     };
-
-    startNewInterview();
-    // Adding sessionId back to the dependency array ensures that when we 
-    // call setSessionId(), the effect re-runs, sees the new ID, and safely exits!
+    if (problemId && !sessionId) {
+      initializeSession();
+    }
   }, [problemId, sessionId]);
 
   // Callback for child components to signal user activity
@@ -336,7 +304,6 @@ const Arena = () => {
       }
 
       setEvaluationData(evaluationResult);
-      localStorage.removeItem('activeInterviewSession'); // Clear the ghost session
     } catch (err) {
       console.error("Failed to grade interview:", err);
       // The modal will show an error state if evaluationData is null

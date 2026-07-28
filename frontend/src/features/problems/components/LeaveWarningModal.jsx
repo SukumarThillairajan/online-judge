@@ -21,11 +21,10 @@ const LeaveWarningModal = ({ isOpen, onClose, onEndInterview }) => {
                     >
                         Cancel
                     </button>
-                    {/* Option 2: Leave without saving (Deletes local storage) */}
+                    {/* Option 2: Leave without saving (Abandons the session ungraded) */}
                     <button
                         onClick={() => {
-                            localStorage.removeItem('activeInterviewSession');
-                            navigate('/dashboard'); 
+                            navigate('/dashboard');
                         }}
                         className="px-4 py-2 text-sm font-medium bg-red-900/30 text-red-400 border border-red-800 hover:bg-red-900/50 rounded transition-colors"
                     >

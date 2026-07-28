@@ -1,17 +1,63 @@
-# **Online Judge V1: High-Level Design (HLD)**
+# **Online Judge V2: High-Level Design (HLD)**
+
+*Version 2.0 — AI Interviewer Integration. This document supersedes the V1 HLD and describes the system as it is currently deployed.*
 
 ## **0\. High-Level Architecture Diagram**
 
-***\[Architecture Diagram Pending\]***   
-*A high-level system architecture diagram illustrating the data flow between the React Frontend, Node.js/Express Backend, PostgreSQL Database, and the BullMQ/Docker Execution Pipeline is currently being drafted and will be inserted here shortly.* 
+```
+                                  ┌──────────────────────────────┐
+                                  │        Vercel (CDN)          │
+                                  │  React 19 + Vite SPA         │
+                                  │  Monaco Editor · AI Chatbox  │
+                                  └──────────────┬───────────────┘
+                                                 │
+                        HTTPS (axios, withCredentials: true)
+                        + Server-Sent Events (fetch ReadableStream)
+                                                 │
+                                                 ▼
+     ┌───────────────────────────────────────────────────────────────────────┐
+     │                       AWS EC2 Instance (Ubuntu)                       │
+     │                                                                       │
+     │   ┌──────────────────────────┐        ┌─────────────────────────┐     │
+     │   │  Express 5 API Server    │        │   BullMQ Worker         │     │
+     │   │  (Docker container)      │        │   (concurrency: 5)      │     │
+     │   │                          │        │                         │     │
+     │   │  auth · problems ·       │◀──────▶│   evaluate-code         │     │
+     │   │  submissions · interviews│  jobs  │   run-code              │     │
+     │   └───────┬──────────┬───────┘        └────────────┬────────────┘     │
+     │           │          │                             │                  │
+     │           │          │                  docker-cli │ (host socket)    │
+     │           │          │                             ▼                  │
+     │           │          │             ┌───────────────────────────┐      │
+     │           │          │             │  Ephemeral Sandboxes      │      │
+     │           │          │             │  gcc-alpine · corretto:21 │      │
+     │           │          │             │  python:3.11 · node:20    │      │
+     │           │          │             │  --network none           │      │
+     │           │          │             │  --memory 256m · --rm     │      │
+     │           │          │             └───────────────────────────┘      │
+     └───────────┼──────────┼──────────────────────────────────────────────────┘
+                 │          │
+     ┌───────────┘          └──────────────┬──────────────────────┐
+     ▼                                     ▼                      ▼
+┌───────────────┐                 ┌──────────────────┐   ┌──────────────────┐
+│  Redis        │                 │  PostgreSQL      │   │  Google Gemini   │
+│  BullMQ queue │                 │  (Supabase)      │   │  gemini-3.1-     │
+│  chat cache   │                 │  Drizzle ORM     │   │  flash-lite      │
+│  run results  │                 │                  │   │  (chat + grader) │
+└───────────────┘                 └──────────────────┘   └──────────────────┘
+```
 
 ## **1\. Tech Stack**
 
-* **Frontend:** React \+ Redux (State Management).  
-* **Backend:** Node.js \+ Express.js.  
-* **Database:** PostgreSQL (Relational schema enforcing ACID compliance).  
-* **Message Broker:** Redis \+ BullMQ (For asynchronous job queuing).  
-* **Execution Sandbox:** Docker (Single container instantiation per submission).
+* **Frontend:** React 19 \+ Vite 8, TanStack Query (server-state management and caching), React Router 7, React Hook Form, Tailwind CSS 4\.  
+* **Code Editor:** Monaco Editor (`@monaco-editor/react`), with `react-markdown`, `remark-math` and `rehype-katex` for rendering problem statements and AI messages.  
+* **Backend:** Node.js 18+ \+ Express 5 (native ES Modules).  
+* **ORM & Migrations:** Drizzle ORM \+ `drizzle-kit` (versioned SQL migrations checked into the repository).  
+* **Database:** PostgreSQL, hosted on Supabase (relational schema enforcing ACID compliance).  
+* **Cache & Message Broker:** Redis \+ BullMQ via `ioredis` (asynchronous job queuing, live interview state, and run-result caching).  
+* **Execution Sandbox:** Docker — one throwaway container per compilation step and one per test case execution.  
+* **AI Layer:** Google Gemini (`gemini-3.1-flash-lite`) through the `@google/generative-ai` SDK, used for both the live interviewer and the post-interview grader.  
+* **Real-Time Transport:** Server-Sent Events (SSE) streamed over an authenticated HTTP POST, consumed on the client via the Fetch `ReadableStream` API.
 
 ## **2\. Database Schema (PostgreSQL)**
 
@@ -23,24 +69,25 @@ Handles authentication, user profiles, and role-based access (RBAC).
 
 | Column Name | Data Type | Constraints & Keys |
 | :---- | :---- | :---- |
-| user\_id | UUID / SERIAL | **Primary Key** |
-| username | VARCHAR | Unique, Not Null |
-| email\_id | VARCHAR | Unique, Not Null |
-| hashed\_password | VARCHAR | Not Null |
-| role | VARCHAR | Enum: 'user', 'admin' (Default: 'user') |
-| created\_at | TIMESTAMP | Default CURRENT\_TIMESTAMP |
+| user\_id | UUID | **Primary Key**, Default `gen_random_uuid()` |
+| username | VARCHAR(255) | Unique, Not Null |
+| email\_id | VARCHAR(255) | Unique, Not Null |
+| hashed\_password | VARCHAR(255) | Not Null (bcrypt, 10 salt rounds) |
+| role | ENUM `role` | Enum: 'ADMIN', 'USER' (Default: 'USER'), Not Null |
+| created\_at | TIMESTAMP | Default `now()`, Not Null |
 
 ### **2.1.2. Problems Table**
 
-Stores the core problem data and UI-facing sample cases.
+Stores the core problem data, the UI-facing sample cases, and the constraints block that the AI interviewer withholds until the candidate earns it.
 
 | Column Name | Data Type | Constraints & Keys |
 | :---- | :---- | :---- |
-| problem\_id | UUID / SERIAL | **Primary Key** |
-| problem\_name | VARCHAR | Not Null |
-| difficulty | VARCHAR | Enum: Easy, Medium, Hard |
+| problem\_id | UUID | **Primary Key**, Default `gen_random_uuid()` |
+| problem\_name | VARCHAR(255) | Unique, Not Null |
+| difficulty | ENUM `difficulty` | Enum: Easy, Medium, Hard — Not Null |
 | statement | TEXT | Not Null |
-| sample\_testcases | JSONB | Not Null |
+| constraints | TEXT | Nullable — *added in V2* |
+| sample\_test\_cases | JSONB | Not Null |
 
 ### **2.1.3. Test Cases Table**
 
@@ -48,190 +95,347 @@ Stores the hidden test cases for the execution engine.
 
 | Column Name | Data Type | Constraints & Keys |
 | :---- | :---- | :---- |
-| testcase\_id | UUID / SERIAL | **Primary Key** |
-| problem\_id | UUID / INT | **Foreign Key** \- Problems(problem\_id) |
+| test\_case\_id | UUID | **Primary Key**, Default `gen_random_uuid()` |
+| problem\_id | UUID | **Foreign Key** — Problems(problem\_id), **ON DELETE CASCADE**, Not Null |
 | input | TEXT | Not Null |
 | output | TEXT | Not Null |
 
 ### **2.1.4. Submissions Table**
 
-Tracks all code executions, historical data, and verdicts.
+Tracks all code executions, historical data, verdicts, and — new in V2 — the AI's score for the interview attempt that produced the submission.
 
 | Column Name | Data Type | Constraints & Keys |
 | :---- | :---- | :---- |
-| submission\_id | UUID / SERIAL | **Primary Key** |
-| user\_id | UUID / INT | **Foreign Key** \- Users(user\_id) |
-| problem\_id | UUID / INT | **Foreign Key** \- Problems(problem\_id) |
+| submission\_id | UUID | **Primary Key**, Default `gen_random_uuid()` |
+| user\_id | UUID | **Foreign Key** — Users(user\_id), Not Null |
+| problem\_id | UUID | **Foreign Key** — Problems(problem\_id), Not Null |
+| session\_id | UUID | **Foreign Key** — Interview Sessions(session\_id), Nullable — *added in V2* |
 | code | TEXT | Not Null |
-| language | VARCHAR | Enum: cpp, python, java |
-| verdict | VARCHAR | Enum: Pending, Accepted, Wrong Answer, Compilation Error, Runtime Error, Time Limit Exceeded, Memory Limit Exceeded |
-| created\_at | TIMESTAMP | Default CURRENT\_TIMESTAMP |
+| language | ENUM `language` | Enum: c, cpp, java, python, javascript — Not Null |
+| verdict | ENUM `verdict` | Enum: Pending, Accepted, Compilation Error, Runtime Error, Time Limit Exceeded, Memory Limit Exceeded, Wrong Answer, Internal System Error (Default: 'Pending'), Not Null |
+| created\_at | TIMESTAMP | Default `now()`, Not Null |
+| error\_details | JSONB | Nullable — failing test case ID, expected vs. actual output, or the raw compiler trace |
+| total\_score | INTEGER | Default 0, Not Null — *added in V2* |
+| gamified\_rank | VARCHAR(15) | Default 'Unranked', Not Null — *added in V2* |
+| score\_breakdown | JSONB | Default `{}`, Not Null — *added in V2* |
+
+### **2.1.5. Interview Sessions Table**
+
+New in V2. A dedicated table for mock interview sessions, deliberately kept separate from `submissions` so that the core judging table is never polluted with conversational data.
+
+| Column Name | Data Type | Constraints & Keys |
+| :---- | :---- | :---- |
+| session\_id | UUID | **Primary Key**, Default `gen_random_uuid()` |
+| user\_id | UUID | **Foreign Key** — Users(user\_id), Not Null |
+| problem\_id | UUID | **Foreign Key** — Problems(problem\_id), Not Null |
+| submission\_id | UUID | **Foreign Key** — Submissions(submission\_id), Nullable |
+| chat\_history | JSONB | Default `'[]'` — the archived transcript, flushed from Redis when the interview ends |
+| started\_at | TIMESTAMP | Default `now()`, Not Null |
+| ended\_at | TIMESTAMP | Nullable — remains NULL until the session is graded |
 
 ### **2.2 Entity Relationships**
 
-* **Users to Submissions \- One-to-many:** A single user can make multiple submissions, but each submission belongs to exactly one user.  
-* **Problems to Submissions \- One-to-many:** A single problem can have multiple submissions across different users.  
-* **Problems to Test Cases \- One-to-many:** A single problem contains multiple hidden test cases.
+* **Users to Submissions** \- One-to-many: A single user can make multiple submissions, but each submission belongs to exactly one user.  
+* **Problems to Submissions** \- One-to-many: A single problem can have multiple submissions across different users.  
+* **Problems to Test Cases** \- One-to-many: A single problem contains multiple hidden test cases, and deleting the problem cascades the deletion of its test cases.  
+* **Users to Interview Sessions** \- One-to-many: A single user can attempt many mock interviews.  
+* **Interview Sessions to Submissions** \- One-to-many: Every "Submit" pressed inside an active interview stamps its `session_id` onto the submission, so the entire attempt can be reconstructed afterwards.  
+* **Interview Sessions to Final Submission** \- One-to-one (nullable): `interview_sessions.submission_id` points at the single graded snapshot for that session. This forms a deliberate circular reference with `submissions.session_id`; both sides are nullable, so rows can always be inserted in either order.
 
 ### **2.3 Database Indexes**
 
-1. **Submissions (user\_id, problem\_id):** A composite index that heavily optimizes the GET /api/submissions/problem/:id/me endpoint to instantly fetch a specific user's history for the exact problem they are currently viewing.  
-2. **Submissions (user\_id):** Optimizes querying the millions of rows in the Submissions table for a single user's entire history, powering the GET /api/submissions/user/:id/all endpoint.  
-3. **Submissions (problem\_id):** Optimizes the GET /api/submissions/problem/:id/all endpoint to fetch all attempts across the platform for a specific problem.  
-4. **Submissions (created\_at):** Optimizes sorting for recent submissions and leaderboard aggregations.  
-5. **Test Cases (problem\_id):** Ensures the Worker instantly retrieves all hidden test cases when evaluating a fresh submission.
+1. **Submissions (user\_id, problem\_id):** A composite index that heavily optimizes the `GET /api/submissions/problem/:problemId/me` endpoint to instantly fetch a specific user's history for the exact problem they are currently viewing.  
+2. **Submissions (user\_id):** Optimizes querying a single user's entire history, powering the `GET /api/submissions/me` endpoint.  
+3. **Submissions (problem\_id):** Optimizes the `GET /api/submissions/problem/:problemId/all` endpoint to fetch all attempts across the platform for a specific problem.  
+4. **Submissions (created\_at):** Optimizes sorting for recent submissions and serves as the tie-breaker column in leaderboard aggregations.  
+5. **Submissions (problem\_id, total\_score DESC):** *New in V2.* A composite index purpose-built for the gamified leaderboard, which sorts by AI score descending within a single problem.  
+6. **Test Cases (problem\_id):** Ensures the Worker instantly retrieves all hidden test cases when evaluating a fresh submission.  
+7. **Problems (difficulty):** Optimizes difficulty filtering on the dashboard.  
+8. **Interview Sessions (user\_id), (problem\_id), (user\_id, problem\_id), (submission\_id):** *New in V2.* Support the ownership check performed on every chat and grading request, plus per-user interview history lookups.
 
 ## **3\. Backend REST API Endpoints (Express.js)**
 
-| Endpoint | HTTP Method | Purpose |
-| :---- | :---- | :---- |
-| /api/auth/register | POST | Create a new user.Return JWT. |
-| /api/auth/login | POST | Authenticate user.Return JWT. |
-| /api/auth/logout | POST | Logs user out, clears HTTP-only cookie. |
-| /api/admin/\* | ALL | Protected routes for Admin CRUD operations on problems and testcases. |
-| /api/problems | GET | Fetch problem list for the dashboard. |
-| /api/problems/:id | GET | Fetch specific problem details and sample test cases. |
-| /api/submissions/run | POST | Test code against custom/sample testcases. Returns raw stdout. Does not affect database/leaderboard. |
-| /api/submissions/submit | POST | Official evaluation against hidden test cases. Saves submission and updates leaderboard. |
-| /api/submissions/:id/status | GET | Polling Endpoint. Continuously fetches the current verdict for a specific submission without needing a full page refresh. |
-| /api/submissions/problem/:id/me | GET | Fetch the current logged-in user's submissions for a specific problem. Populates the "My Submissions" tab. |
-| /api/submissions/problem/:id/all | GET | Fetch all users' submissions for a specific problem. Populates the "All Submissions" tab. |
-| /api/submissions/user/:id/all | GET | Fetch the complete submission history for a specific user across every problem they have attempted. |
-| /api/leaderboard | GET | Fetch rankings based on accepted verdicts. |
+Every route below is authenticated except the health check and the two public auth entry points. Authentication is performed by the `requireAuth` middleware, which reads the JWT from an HTTP-only cookie.
 
-## **4\. Execution Engine & Pipeline**
-
-### **Sequential Evaluation Pipeline (For Submit Route)**
-
-6. **Queue Pickup:** BullMQ worker picks up a Pending submission.  
-7. **Compilation:** Failure results in “Compilation Error” as the verdict.  
-8. **Boot-up:** A single Docker container is spun up tailored to the submitted language.  
-9. **Sequential Streaming:** Worker iterates through all hidden test cases for the problem, injecting stdin and awaiting stdout.  
-   * If memory exceeds 256 MB or crashes: “Memory Limit Exceeded” (MLE).  
-   * If execution exceeds 2 seconds: “Time Limit Exceeded” (TLE).  
-   * If stdout does not match expected output: “Wrong Answer” (WA).  
-10. **Final Verdict:** If all test cases pass without breaking the loop, the database updates to “Accepted”. Container is destroyed.
-
-## **5\. Frontend State & UI Flow**
-
-### **5.1 UI Screens**
-
-* **Page 1: Authentication Space** (Registration & Login).  
-* **Page 2: Dashboard** (List of problems).  
-* **Page 3: Coding Arena** (Problem statement, expandable sample test cases, language dropdown, code editor, custom testcase toggle, *Run Code* button, *Submit Code* button).  
-* **Page 4: Analytics & Leaderboard** (3 Tabs: My Submissions, All Submissions, Leaderboard).
-
-### **5.2 Component-Scoped Polling Strategy**
-
-* When a user clicks "Submit", React updates the UI to show a loading state and begins polling /api/submissions/:id every 2 seconds.  
-* If the user navigates away from the Coding Arena, the component unmounts, automatically clearing the polling interval to save network resources.  
-* Users can view finished verdicts seamlessly via the Leaderboard/Submissions tabs.
-
-## **6: Authentication & Authorization**
-
-### **Role-Based Access Control (RBAC)**
-
-* **Standard User Role:** Can read available problems, submit code to the execution engine, view their personal submission history, and view the global feed of submissions for specific problems.  
-* **Admin Role:** Granted full CRUD (Create, Read, Update, Delete) access to the system. Admins can create new problems, modify hidden test cases, delete faulty submissions, and view the progress of any user on the platform. Protected middleware explicitly verifies the “role” claim in the JWT before allowing access to Admin API routes.
-
-## **7\. Non-Functional Requirements (NFRs)**
-
-### **7.1 Resource Constraints on Docker**
-
-* **Memory Limit:** 256 MB.  
-* **Time Limit:** 2 Seconds.
-
-### **7.2 Security Measures**
-
-### **7.2.1 JWT**
-
-Upon successful login, the Express backend generates a JSON Web Token (JWT) and attaches it to an **HTTP-Only Cookie**. This ensures maximum security by preventing malicious client-side JavaScript (Cross-Site Scripting / XSS) from accessing the token. The browser automatically attaches this cookie to subsequent API requests.
-
-### **7.2.2 Rate Limiting**
-
-To prevent abuse of the Docker execution engine, rate limiting is implemented on two fronts:
-
-* **Frontend UX Constraint:** When a user clicks "Submit", the button immediately enters a disabled, loading state until a verdict is returned, preventing accidental double-clicks or UI spamming.  
-* **Backend API Gateway:** A rate-limiting middleware strictly throttles the ‘/api/submissions/submit’ endpoint, restricting users to a maximum of 1 submission per 10 seconds per IP address to safeguard the BullMQ queue from malicious scripts.
-
-### **7.3 Failure Handling**
-
-To ensure the Online Judge remains stable during peak traffic and unexpected system faults, the execution pipeline incorporates the following fallback mechanisms:
-
-* **Queue Overload (Surge Handling):** BullMQ inherently protects the backend from being overwhelmed by decoupling submission requests from execution. If submissions exceed the processing rate, they safely stack in the Redis queue.  
-* **Worker Crashes (Stalled Jobs):** If a Node.js worker abruptly crashes while evaluating a submission, BullMQ's heartbeat monitor will detect the dropped connection. The system marks this as a "stalled job" and automatically returns it to the pending queue. The queue is configured to retry stalled jobs a maximum of 3 times. If it fails on the final attempt, the job is killed, and the database is updated to "Internal System Error."  
-* **Docker Startup Failures:** If the Docker daemon fails to allocate a container due to host resource exhaustion, the worker pipeline catches this exception via a strict try-catch block. Instead of crashing the worker process, it securely updates the PostgreSQL database verdict to **Internal System Error**, ensuring the UI can still inform the user.
-
-### **7.4 Logging Strategy**
-
-For the V1 MVP, the backend utilizes standard, efficient local logging:
-
-* **Morgan:** Middleware used to log all incoming HTTP requests for API debugging.  
-* **Winston:** Used to capture backend exceptions, worker crashes, and database connection failures, writing them to a local log file for easy diagnosis.
-
-## **8\. Deployment**
-
-The system is deployed using a decoupled, cloud-native architecture to ensure seamless horizontal scaling in the future:
-
-* **Frontend:** Hosted on a global CDN platform like **Vercel** or **Netlify** for instant asset delivery.  
-* **Backend, Worker & Queue:** The Node.js Express server, BullMQ Worker, and Docker Engine are hosted together on an **AWS EC2 Instance**.  
-* **Database:** PostgreSQL is hosted on a managed database service like **AWS RDS** (Relational Database Service) or **Supabase**, completely decoupling the storage layer from the compute layer.
-
-## **9\. Scalability**
-
-While V1 prioritizes a solid, functional MVP architecture, the system is designed to accommodate the following scaling upgrades in future iterations:
-
-* **Execution Layer (Horizontal Scaling):** To manage severe overloads in the future, we can configure a concurrency limit on the workers and scale out by spinning up additional worker processes on separate servers that all listen to the same centralized Redis queue.  
-* **Storage Layer (Object Storage):** While PostgreSQL TEXT columns are great for V1, storing millions of code snippets can eventually bloat the database. In the future, we will migrate the raw submitted code into AWS S3 (Object Storage) to keep the core relational database incredibly lightweight. The database will simply store the S3 file URLs.
-
-## **10\. Current V2 Roadmap (AI Interviewer Integration)**
-
-Version 2 will upgrade the Coding Arena into a real-time, AI-driven mock interview environment. The current V1 architecture is designed to seamlessly scale to support the following upgrades without requiring major restructuring/migrations:
-
-### **10.1 Database Additions (PostgreSQL)**
-
-The schema will be updated to handle unstructured AI logic and structured scoring:
-
-* **v2\_ai\_metadata (Column):** A JSONB column will be added to the “Problems” table to store hidden constraints, specific hints, and edge-case triggers.  
-* **Interviews (Table):** A new table dedicated to storing the final mock interview sessions to prevent polluting the core “Submissions” table.  
-  * **Primary Key:**  
-    `interview_id`  
-  * **Foreign Keys:**  
-    `user_id`,  
-    `problem_id`, and  
-    `Submission_id` (pointing to the user's final submitted (or auto-submitted) code).  
-  * **Content:**  
-    `chat_transcript (JSONB)`.  
-  * **Scoring:**  
-    `score_breakdown (JSONB)`,  
-    `total_score (INT)`,  
-    `hunter_rank (VARCHAR)`.  
-* **New Indexes:**  
-  `(user_id)`,  
-  `(problem_id)`,  
-  `(user_id, problem_id)`.
-
-### **10.2 Additional REST APIs**
+### **3.1 Authentication**
 
 | Endpoint | HTTP Method | Purpose   |
 | :---- | :---- | :---- |
-| /api/interviews/start | POST | Initializes the Redis session, sets the 45-minute expiration timer, and returns a WebSocket room ID for the frontend to connect to. |
-| /api/interviews/history/me | GET | Fetches the logged-in user's past interview sessions, including their Ranks per submission and full chat transcripts, to populate their Analytics dashboard. |
-| /api/interviews/leaderboard/:problem\_id | GET | Fetches the gamified tier list (S-Rank, A-Rank, etc.) for a specific problem. |
+| /api/auth/register | POST | Create a new user, hash the password with bcrypt, and set the JWT cookie. |
+| /api/auth/login | POST | Authenticate a user and set the JWT cookie. |
+| /api/auth/logout | POST | Log the user out by clearing the HTTP-only cookie. |
+| /api/auth/verify | GET | Validate the cookie and return the decoded user payload. Backs the frontend's `ProtectedRoute` guard. |
 
-### **10.3 Real-Time Communication & State**
+### **3.2 Problems**
 
-* **WebSockets:** The Coding Arena will utilize WebSockets (Socket.io) to establish a persistent two-way connection. This allows the frontend to stream IDE changes to the backend in real-time.  
-* **Redis Session State:** To keep the Node.js servers stateless, the active 45-minute interview state (timer, chat history, hint counters) will be temporarily stored in Redis memory to prevent database lag during the live session.
+| Endpoint | HTTP Method | Purpose   |
+| :---- | :---- | :---- |
+| /api/problems/user-status | GET | Fetch every problem for the dashboard, LEFT JOINed against a window-function CTE that resolves the current user's **best rank** for each problem. |
+| /api/problems/:id | GET | Fetch a specific problem's statement, constraints, and sample test cases for the Coding Arena. |
+| /api/problems | POST | **Admin only.** Create a problem and bulk-insert its hidden test cases inside a single database transaction. |
+| /api/problems/:id | DELETE | **Admin only.** Delete a problem; its hidden test cases are removed by the ON DELETE CASCADE constraint. |
 
-### **10.4 AI Scoring Engine & Gamification**
+### **3.3 Submissions & Execution**
 
-When the timer expires, the Node.js backend retrieves the chat history from Redis and the final code from the IDE. It sends this payload to the LLM (e.g., OpenAI/Gemini API) with a strict grading prompt (evaluating speed, hint independence, edge cases, and follow-ups). The LLM returns a comprehensive “score\_breakdown” JSON object and a percentage “total\_score” (0-100).
+| Endpoint | HTTP Method | Purpose   |
+| :---- | :---- | :---- |
+| /api/submissions/run | POST | Queue a scratch execution against custom stdin. Returns a UUID `jobId`. Never touches the database or the leaderboard. |
+| /api/submissions/run/:id/status | GET | Poll the Redis cache for the result of a `run-code` job. Returns **202 Accepted** while the job is still in flight. |
+| /api/submissions/submit | POST | Official evaluation against hidden test cases. Persists the submission as *Pending* and enqueues an `evaluate-code` job. Accepts an optional `sessionId` binding the submission to a live interview. |
+| /api/submissions/:id/status | GET | **Polling endpoint.** Fetches the current verdict and error details for a specific submission without a full page refresh. |
+| /api/submissions/me | GET | Fetch the complete submission history for the logged-in user across every problem they have attempted. |
+| /api/submissions/problem/:problemId/me | GET | Fetch the logged-in user's submissions for a specific problem. Populates the "My Submissions" tab. |
+| /api/submissions/problem/:problemId/all | GET | Fetch all users' submissions for a specific problem. Populates the "All Submissions" tab. |
+| /api/submissions/leaderboard/problem/:problemId | GET | Fetch the gamified tier list for a problem. Joins on users, filters to **Accepted** verdicts, sorts by `total_score` DESC with `created_at` ASC as the tie-breaker, then de-duplicates down to each user's single best attempt. |
 
-The percentage score is mapped to a gamified **Rank** (E-Rank, D-Rank, C-Rank, B-Rank, A-Rank, S-Rank). The user's analytics dashboard will exclusively display this gamified Tier to maintain the immersive experience, while the underlying numerical “total\_score” is kept hidden in the database and utilized solely for precise tie-breaking on the global problem leaderboards.
+### **3.4 AI Interviews**
 
-### **10.5 New UI/UX Workflows**
+| Endpoint | HTTP Method | Purpose   |
+| :---- | :---- | :---- |
+| /api/interviews/start | POST | Create a new `interview_sessions` row and return the `sessionId` that the frontend persists and attaches to every subsequent call. |
+| /api/interviews/chat | POST | **Server-Sent Events stream.** Appends the candidate's message to the Redis transcript, calls Gemini with the full history plus the live editor contents, and streams the reply back token-by-token. Rate limited. |
+| /api/interviews/finish | POST | Snapshot the final code, guarantee that a graded verdict exists, run the AI grader, map the score to a rank, and atomically persist everything. Rate limited. |
 
-* **The Coding Arena (Mock Interview Mode):** The UI will be updated to feature a side-by-side layout. One half will contain the code editor, and the other half will house the AI Chat Interface and a live 45-minute countdown timer.  
-* **Gamified Submission Analytics:** The Analytics page will be updated so that each individual mock interview submission displays its awarded **Rank** (e.g., S-Rank, A-Rank). Users do not have a global rank. Rather, each coding attempt is evaluated and ranked independently.  
-* **The AI Leaderboard:** The new leaderboard tab will rank users not just by "Accepted" code, but by their overall interview performance tiers for specific problems.
+### **3.5 System**
+
+| Endpoint | HTTP Method | Purpose   |
+| :---- | :---- | :---- |
+| / | GET | Health check. Returns `{ status: "OK" }` for uptime probes and load balancer checks. |
+
+## **4\. Execution Engine & Pipeline**
+
+### **4.1 Supported Languages & Sandbox Images**
+
+| Language | Docker Image | Compile / Syntax Step | Run Command |
+| :---- | :---- | :---- | :---- |
+| c | gcc-alpine | `gcc -fsanitize=address,undefined -fno-sanitize-recover=all -g -Wall -Werror` | `/app/main` |
+| cpp | gcc-alpine | `g++ -fsanitize=address,undefined -fno-sanitize-recover=all -g -Wall -Werror` | `/app/main` |
+| java | amazoncorretto:21-alpine | `javac -Xlint:all -Werror` | `java Main` |
+| python | python:3.11-slim | `python -m py_compile` | `python -W error` |
+| javascript | node:20-alpine | `node -c` | `node --use_strict --throw-deprecation` |
+
+**Sanitizer-backed correctness.** C and C++ submissions are compiled with **AddressSanitizer** and **UndefinedBehaviorSanitizer** in non-recovering mode. Out-of-bounds writes, use-after-free, signed integer overflow and similar latent bugs abort the process immediately and are reported as a **Runtime Error** rather than silently producing a wrong answer. The interpreted languages are held to an equivalent standard by promoting warnings to errors (`-W error`, `--throw-deprecation`, `-Werror`).
+
+### **4.2 Sequential Evaluation Pipeline (Submit Route)**
+
+1. **Queue Pickup:** The BullMQ worker picks up an `evaluate-code` job for a *Pending* submission.  
+2. **Workspace Isolation:** A UUID-named temporary directory is created and the source file is written into it. The worker writes through its own container path (`/app/temp/<uuid>`) while mounting the equivalent **host** path (`/home/ubuntu/app/temp/<uuid>`) into the sandbox — the worker drives the host Docker daemon, so the bind-mount source must always be expressed in host coordinates.  
+3. **Compilation:** A throwaway container compiles or syntax-checks the source under a 10-second ceiling. Failure short-circuits the pipeline with a **Compilation Error** verdict and the raw compiler `stderr` preserved in `error_details`.  
+4. **Sequential Streaming:** The worker fetches every hidden test case for the problem and iterates through them. Each test case runs in a fresh container started with `--rm --network none --memory 256m`, with stdin redirected from a file written into the mounted workspace.  
+   * If the wall clock exceeds 3 seconds, `exec` sends SIGTERM: **"Time Limit Exceeded"** (TLE).  
+   * If the process aborts, segfaults, trips a sanitizer, or is OOM-killed by the 256 MB cgroup limit: **"Runtime Error"** (RTE), with the trace preserved.  
+   * If stdout does not match the expected output: **"Wrong Answer"** (WA), recording the failing input, the expected output and the actual output.  
+5. **Final Verdict:** If the loop completes without breaking, the database is updated to **"Accepted"**. Every container is destroyed by `--rm`, and the temporary directory is removed in a `finally` block regardless of outcome.
+
+### **4.3 The Run Pipeline (Scratch Execution)**
+
+The `run-code` job follows the same compile-then-execute path but against a single user-supplied stdin. It never writes to PostgreSQL. The result is cached in Redis under the job's UUID with a **300-second TTL**, and the frontend polls `GET /api/submissions/run/:id/status` until it materializes. This keeps the judging table free of exploratory noise while still giving the AI interviewer visibility into what the candidate is trying (see §5.3).
+
+### **4.4 Queue Configuration**
+
+* **Concurrency:** 5 jobs in flight per worker process.  
+* **Lock duration:** 30 seconds — the worker must renew its lock to prove liveness.  
+* **Retries:** 3 attempts with exponential backoff starting at 1 second.  
+* **Stalled jobs:** `maxStalledCount: 3` before the job is declared dead.  
+* **Retention:** the last 1,000 completed jobs are kept for up to 24 hours for auditing, then evicted.
+
+## **5\. AI Interview Engine**
+
+This is the defining addition of V2. The Coding Arena is no longer a solitary editor — it is a proctored, conversational interview with a stateful examiner.
+
+### **5.1 Session Lifecycle**
+
+1. **Start.** The candidate opens a problem. The frontend calls `POST /api/interviews/start` on mount and receives a `sessionId`, which is held in React component state for the lifetime of the Arena. A row is inserted into `interview_sessions` with `ended_at` NULL.  
+2. **Live phase.** Every chat turn hits `POST /api/interviews/chat`. The server verifies that the session belongs to the requesting user *and* the requested problem before touching the LLM. The transcript lives in Redis under `interview:chat:<sessionId>` with a **2-hour TTL**, so an abandoned interview evicts itself from memory automatically.  
+3. **Finish.** Triggered either by the 45-minute timer expiring or by the candidate pressing "End Interview". The server snapshots the code, grades the transcript, persists the result, and deletes the Redis key.
+
+### **5.2 The Interviewer: A Prompt-Enforced State Machine**
+
+The system instruction sent to Gemini defines a strict six-phase progression, and the model is explicitly forbidden from revealing the phases or writing a full solution:
+
+* **Phase 0 — Greeting & Setup:** Welcome the candidate and wait for confirmation.  
+* **Phase 1 — Problem Reveal & Discovery:** Release the statement *only*. Sample test cases are provided on request; constraints are withheld unless explicitly asked for.  
+* **Phase 2 — Approach & Brainstorming:** Demand a plain-English approach before any code. A wrong approach earns a failing test case to dry-run against, never the answer.  
+* **Phase 3 — Complexity & Optimization:** Require Time and Space Complexity. A brute-force answer triggers the constraint reveal and a push to optimize; Phases 2 and 3 cycle until the approach is optimal.  
+* **Phase 4 — Coding:** The editor is explicitly unlocked. System-injected observations about idleness surface as gentle hint offers.  
+* **Phase 5 — Submission & Follow-ups:** An Accepted verdict earns one or two theoretical follow-ups (scale, concurrency, problem variants) before the interview is allowed to close.
+
+Each turn is sent with the problem record, the **live contents of the Monaco editor**, and the full Redis transcript, so the interviewer can see the candidate's code as it is being written.
+
+### **5.3 The Hybrid "Ghost Prompt" Architecture**
+
+The interviewer is fed machine-generated observations that the candidate never sees. These are appended to the outgoing message as a bracketed `[SYSTEM OBSERVATION]` block that the model is instructed never to echo verbatim. Four triggers are wired up:
+
+* **Idle detection:** No keystroke in the editor or the chat for 5 minutes prompts the AI to ask whether the candidate is stuck.  
+* **Run succeeded:** The custom input and the produced output are handed to the AI, which silently verifies correctness and intervenes *only* if the output is wrong.  
+* **Run crashed:** The compiler or runtime trace is forwarded so the AI can point at the conceptual mistake without writing the fix.  
+* **Submit returned:** An **Accepted** verdict triggers a follow-up question; a **Wrong Answer** hands over the failing input and the expected-versus-actual outputs so the AI can nudge toward the missed edge case.
+
+This is what makes the session feel supervised rather than merely transcribed: the AI reacts to what the candidate *does*, not only to what they say.
+
+### **5.4 Transport: Server-Sent Events**
+
+The chat endpoint responds with `Content-Type: text/event-stream`. Gemini's streamed chunks are relayed as `data: {"text":"..."}\n\n` frames and terminated with a `data: [DONE]` sentinel; each chunk is JSON-encoded so that newlines inside the model's prose cannot corrupt the SSE framing. The frontend consumes this with `fetch` and a `ReadableStream` reader rather than `EventSource`, because the request must be a **POST carrying credentials** — something `EventSource` cannot express. Errors raised mid-stream are emitted as an in-band error frame followed by `[DONE]`, so the client always terminates cleanly.
+
+### **5.5 The Smart Snapshot**
+
+A candidate may end an interview having just pressed Submit, or having typed twenty more characters afterwards, or having never submitted at all. `POST /api/interviews/finish` resolves all three cases before grading:
+
+* It fetches the most recent submission carrying this `session_id`.  
+* If the trimmed final code is **identical** to that submission, the existing row is reused — preserving the real *Accepted* or *Wrong Answer* verdict the candidate earned.  
+* Otherwise a new submission is inserted, pushed onto the evaluation queue, and the request **blocks on a verdict poll** (20 attempts at 1-second intervals) so that no interview is ever graded against unjudged code.
+
+### **5.6 The Grading Engine**
+
+The archived transcript and the final code are sent to Gemini in **JSON mode** (`responseMimeType: application/json`) with a 100-point, four-pillar rubric:
+
+| Pillar | Points | What it measures |
+| :---- | :---- | :---- |
+| Data Structures & Algorithms | 25 | Optimality of the approach and correctness of the Big-O analysis. |
+| Code Quality & Edge Cases | 25 | Readability, formatting, and explicit handling of empty inputs, negatives and bounds. |
+| Communication & Discovery | 25 | Whether constraints and edge cases were probed **before** coding, and whether logic was dry-run aloud. |
+| Problem Solving & Speed | 25 | Independence (every hint costs points), follow-up accuracy, and time to Accepted. |
+
+The model returns `total_score`, a `summary`, `strengths`, `weaknesses`, and a `metrics` object scoring eight individual behaviours. The response is validated for its required keys before it is trusted; a malformed or incomplete payload fails the request rather than writing garbage into the database. An empty or template-only final submission is hard-floored to a score of **0**.
+
+### **5.7 Gamified Ranking**
+
+The numerical score is mapped to a tier, and both are persisted:
+
+| Score Range | Rank |
+| :---- | :---- |
+| 90–100 | S-rank |
+| 80–89 | A-rank |
+| 70–79 | B-rank |
+| 60–69 | C-rank |
+| 50–59 | D-rank |
+| 0–49 | E-rank |
+
+The UI surfaces only the tier, preserving the immersive framing. The raw `total_score` stays in the database and is used solely as the primary sort key — and precise tie-breaker — on the per-problem leaderboard. Ranks are **per attempt**, not global: each coding session is evaluated independently, and the dashboard surfaces a user's best rank per problem.
+
+### **5.8 Atomic Persistence**
+
+The final write is wrapped in a single database transaction: the submission receives its `total_score`, `gamified_rank` and `score_breakdown`, and the interview session receives its archived `chat_history` and `ended_at` timestamp. Either both land or neither does. Only after the transaction commits is the Redis transcript deleted.
+
+## **6\. Frontend State & UI Flow**
+
+### **6.1 UI Screens**
+
+* **Page 1: Authentication Space** (`/login`, `/register`) — React Hook Form validation, JWT cookie set on success.  
+* **Page 2: Dashboard** (`/dashboard`) — the problem list, each row annotated with the user's **best gamified rank** for that problem, served by the window-function CTE behind `/api/problems/user-status`.  
+* **Page 3: Coding Arena** (`/problems/:id`) — a split layout: Monaco editor, language selector, custom-input panel and terminal on one side; the AI chat interface and the live countdown on the other. *Run Code* and *Submit Code* remain, now wired into the ghost-prompt pipeline.  
+* **Page 4: Analytics & Leaderboard** (`/problems/:id/submissions`) — three tabs: My Submissions, All Submissions, and the rank-ordered Leaderboard.
+
+All application routes sit behind a `ProtectedRoute` wrapper that resolves `GET /api/auth/verify` through TanStack Query (`retry: false`, 5-minute `staleTime`), so an expired cookie redirects to login instead of rendering a broken shell.
+
+### **6.2 The Interview Timer**
+
+A 45-minute (2,700-second) countdown drives the session. It turns red and pulses in the final five minutes, and on reaching zero it fires the grading pipeline automatically — an unattended interview still produces a graded result.
+
+### **6.3 Session Lifetime**
+
+The `sessionId` lives purely in React state. It is requested once on mount and discarded when the Arena unmounts, which means a page refresh deliberately starts a **fresh interview session** rather than resuming the old one. Nothing about the live interview is trusted to browser storage: the authoritative transcript is in Redis and the session row is in PostgreSQL, so an abandoned session is reclaimed by its 2-hour TTL rather than lingering as a stale client-side pointer.
+
+### **6.4 Navigation Guard**
+
+Attempting to leave an active interview raises a modal offering three explicit choices: **Cancel** (stay), **Leave Without Saving** (navigates away; the session is simply never graded), or **End & Save Interview** (runs the full grading flow first). The destructive path is never the default.
+
+### **6.5 Component-Scoped Polling Strategy**
+
+* Both *Run* and *Submit* poll their respective status endpoints once per second, up to 20 attempts, through a shared `poll` helper.  
+* Polling is scoped to the Arena component; navigating away unmounts it and clears every interval and idle timer, so no orphaned requests survive the route change.  
+* Finished verdicts remain viewable through the Submissions and Leaderboard tabs.
+
+## **7\. Authentication & Authorization**
+
+### **7.1 Role-Based Access Control (RBAC)**
+
+* **Standard User Role:** Can read available problems, start interviews, run and submit code, view their own submission history, and view the global feed and leaderboard for a problem.  
+* **Admin Role:** Granted create and delete access over problems and their hidden test cases. The `requireAdmin` middleware runs *after* `requireAuth` and explicitly verifies the `role` claim in the JWT before allowing access; unauthorized attempts are logged with the offending user ID and IP address.
+
+### **7.2 Session Ownership Checks**
+
+RBAC alone does not protect interview data, since every candidate is a standard user. Both `/api/interviews/chat` and `/api/interviews/finish` therefore re-query the session with a three-way predicate — `session_id` **AND** `user_id` **AND** `problem_id` — and return 404 on any mismatch. A leaked or guessed `sessionId` is useless to another account.
+
+## **8\. Non-Functional Requirements (NFRs)**
+
+### **8.1 Resource Constraints on Docker**
+
+* **Memory Limit:** 256 MB per container (`--memory 256m`).  
+* **Execution Time Limit:** 3 seconds wall clock per test case.  
+* **Compilation Time Limit:** 10 seconds.  
+* **Network:** `--network none` — sandboxes have no network interface whatsoever, eliminating data exfiltration and outbound abuse.  
+* **Lifetime:** `--rm` guarantees teardown; the host-side temporary workspace is removed in a `finally` block on every path, including failures.
+
+### **8.2 Security Measures**
+
+### **8.2.1 JWT**
+
+On successful login or registration the backend signs a JWT with a **1-day expiry** and attaches it to an **HTTP-Only Cookie**. This prevents malicious client-side JavaScript (Cross-Site Scripting / XSS) from accessing the token. In production the cookie is issued with `secure: true` and `sameSite: "none"` so it survives the cross-origin hop from the Vercel frontend to the EC2 API; in development it falls back to `sameSite: "lax"` over plain HTTP. The verification middleware distinguishes expired tokens from malformed ones, logging the latter alongside the source IP as a tampering signal.
+
+### **8.2.2 Password Storage**
+
+Passwords are hashed with **bcrypt at 10 salt rounds** and are never returned by any endpoint.
+
+### **8.2.3 CORS**
+
+The API accepts credentialed requests only from origins matching `https://online-judge-<slug>.vercel.app`, which admits every Vercel preview deployment without maintaining a hand-written allowlist. All other origins are rejected outright. Tool-based requests carrying no `Origin` header (Postman, curl) are permitted for operational debugging.
+
+### **8.2.4 Rate Limiting**
+
+* **AI endpoints:** `express-rate-limit` caps `/api/interviews/chat` and `/api/interviews/finish` at **6 requests per minute per IP** — generous for a human conversation, prohibitive for a script farming LLM tokens.  
+* **Frontend UX constraint:** *Run* and *Submit* enter a disabled, loading state the moment they are pressed and stay there until a verdict returns, preventing accidental double-clicks and UI spamming.  
+* **Structural throttle:** BullMQ's fixed worker concurrency means an execution flood queues rather than exhausting the host.
+
+### **8.2.5 Prompt Isolation**
+
+Ghost prompts are clearly delimited and accompanied by an explicit instruction never to reproduce them. The grader runs as a separate, stateless model invocation in JSON mode with its own rubric, so a candidate cannot talk their way into a higher score during the conversation itself.
+
+### **8.3 Failure Handling**
+
+To ensure the Online Judge remains stable during peak traffic and unexpected system faults, the pipeline incorporates the following fallback mechanisms:
+
+* **Queue Overload (Surge Handling):** BullMQ inherently protects the backend by decoupling submission requests from execution. If submissions outpace the workers, they safely stack in the Redis queue.  
+* **Worker Crashes (Stalled Jobs):** BullMQ's heartbeat monitor detects a dropped lock, marks the job as stalled, and returns it to the queue for up to 3 attempts with exponential backoff. Exhausted jobs are killed and the database is updated to **Internal System Error**.  
+* **Docker Startup Failures:** If the Docker daemon cannot allocate a container due to host resource exhaustion, the worker catches the exception via a strict try-catch block instead of crashing, and writes **Internal System Error** along with the error message into `error_details`, ensuring the UI can still inform the candidate.  
+* **Evaluation Timeouts During Grading:** The finish route's verdict poll gives up after 20 seconds and returns a clean 500 rather than hanging the request indefinitely.  
+* **AI Failures:** A malformed or incomplete Gemini payload is rejected before it reaches the database. Errors occurring mid-stream are delivered as an in-band SSE error frame followed by `[DONE]`, so the chat UI never freezes.  
+* **Abandoned Sessions:** The 2-hour Redis TTL reclaims memory from interviews that are simply walked away from.  
+* **Database Rollback:** If enqueueing an evaluation job fails after the submission row has been written, that row is deleted, so a user never sees a submission permanently stuck at *Pending*.  
+* **Graceful Shutdown:** On SIGINT the process closes the BullMQ queue and the PostgreSQL pool before exiting, avoiding half-written jobs and leaked connections.
+
+### **8.4 Logging Strategy**
+
+The backend uses structured console logging throughout — request-path errors, worker lifecycle events (`completed`, `failed`, `stalled`), Redis connection state, database connection state, JWT tampering attempts, and AI service failures are all emitted with contextual identifiers such as `jobId`, `submissionId` and `sessionId`. In the containerized deployment these streams are captured by the Docker log driver, keeping the application itself free of local log-file management.
+
+### **8.5 Startup Validation (Fail-Fast)**
+
+The process refuses to start in a half-configured state. `JWT_SECRET_KEY`, `DATABASE_URL`, `REDIS_URL` and `GEMINI_API_KEY` are each validated at import time, and the database connection is tested before the HTTP listener binds. A missing secret produces a loud fatal error at boot rather than a silent 500 in production.
+
+## **9\. Deployment**
+
+The system is deployed using a decoupled, cloud-native architecture:
+
+* **Frontend:** Hosted on **Vercel**. `vercel.json` rewrites all paths to `index.html` for client-side routing, and `VITE_API_BASE_URL` points the built bundle at the production API domain. Locally, the Vite dev server proxies `/api` to `localhost:3000` instead, so the same code runs unmodified in both environments.  
+* **Backend & Worker:** A **multi-stage Docker image** (a `node:18-alpine` builder installing dependencies via `npm ci`, then a slim production stage) running on an **AWS EC2 instance**. The production stage additionally installs `docker-cli` so the worker can drive the **host's** Docker engine to launch sibling sandbox containers — the container never runs a nested daemon of its own.  
+* **Database:** **PostgreSQL on Supabase**, completely decoupling the storage layer from the compute layer. Schema changes ship as versioned `drizzle-kit` migrations checked into the repository.  
+* **Cache & Queue:** **Redis**, reached over `REDIS_URL`, serving simultaneously as the BullMQ backend, the live interview transcript store, and the run-result cache.  
+* **TLS:** The API is served over HTTPS on a dedicated subdomain, which is a hard requirement for the `secure` \+ `sameSite: none` cookie to cross from Vercel to EC2.
+
+## **10\. Scalability**
+
+* **Execution Layer (Horizontal Scaling):** Worker concurrency is already a configuration value. Additional worker processes on separate hosts can subscribe to the same centralized Redis queue with no coordination, since job locking is handled by BullMQ.  
+* **Process Separation:** The API server and the worker currently share a host. Splitting them into independently scaled services is a deployment change, not a code change — they communicate exclusively through Redis.  
+* **Storage Layer (Object Storage):** PostgreSQL `TEXT` columns are adequate today, but storing millions of code snippets will eventually bloat the relational store. Raw submissions can be migrated to **AWS S3**, leaving only object URLs in the database.  
+* **AI Cost & Latency:** `gemini-3.1-flash-lite` was selected for its latency and cost profile under streaming load. As volume grows, transcript truncation, prompt caching and a cheaper first-pass grader are the natural levers.  
+* **Read Scaling:** Leaderboard and dashboard queries are the heaviest reads and are already index-backed; a materialized view refreshed on grading is the next step if they become hot.
+
+## **11\. V3 Roadmap**
+
+* **Voice Interviews:** Speech-to-text for the candidate and text-to-speech for the interviewer, closing the last gap between this and a real phone screen.  
+* **WebSocket Upgrade:** SSE is one-directional by design. A bidirectional channel would enable true collaborative editing, live "the interviewer is typing" affordances, and server-driven timer authority.  
+* **Server-Authoritative Timer:** The 45-minute clock currently runs client-side. Moving the deadline into the Redis session record removes the last piece of trust placed in the browser.  
+* **Multi-Round Interviews:** Chaining two or three problems into a single graded loop, with a cumulative hiring-committee-style verdict.  
+* **Structured Observability:** OpenTelemetry traces spanning the API, the queue and the sandbox, plus per-language execution metrics and AI token accounting.  
+* **Admin Console:** A first-class UI for problem authoring, test case management and submission forensics, replacing direct API calls.  
+* **Editorial Generation:** Using the archived transcripts to generate personalized post-interview editorials targeted at each candidate's specific weaknesses.

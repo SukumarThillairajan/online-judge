@@ -52,7 +52,7 @@ export const submissionWorker = new Worker("submissionQueue", async (job) => {
         if (job.name === "evaluate-code") {
             await db.update(submissions).set({
                 verdict: "Internal System Error",
-                executionDetails: {error: error.message}
+                errorDetails: {error: error.message}
             }).where(eq(submissions.submissionId, job.data.submissionId));
         }
 

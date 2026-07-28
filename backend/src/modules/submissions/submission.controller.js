@@ -1,6 +1,6 @@
 import {db} from "../../database/db_connector.js";
-import {submissions, problems, languageEnum} from "../../database/schema.js";
-import {eq, and, desc} from 'drizzle-orm';
+import {submissions, problems, users, languageEnum} from "../../database/schema.js";
+import {eq, and, asc, desc} from 'drizzle-orm';
 import { randomUUID } from 'crypto';
 import {submissionQueue, redisConnection} from "../../queues/submissionQueue.js";
 

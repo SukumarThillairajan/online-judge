@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import axios from 'axios';
+import { apiClient } from '../../../api/apiClient.js';
 
 // Using react-syntax-highlighter for a better code viewing experience.
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
 const Leaderboard = ({ problemId }) => {
-  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
-
   // State for the code-viewing modal
   const [selectedSubmission, setSelectedSubmission] = useState(null);
 
   const { data: leaderboard = [], isLoading, error } = useQuery({
     queryKey: ['leaderboard', problemId],
     queryFn: async () => {
-      const response = await axios.get(`${API_URL}/api/submissions/leaderboard/problem/${problemId}`, { withCredentials: true });
+      const response = await apiClient.get(`/api/submissions/leaderboard/problem/${problemId}`);
       return response.data.data || [];
     },
     // Keep data fresh but don't refetch too aggressively
@@ -37,10 +35,10 @@ const Leaderboard = ({ problemId }) => {
           <tr>
             <th className="px-4 py-3 font-medium text-gray-600">Rank</th>
             <th className="px-4 py-3 font-medium text-gray-600">User</th>
+            <th className="px-4 py-3 font-medium text-gray-600 text-center">Tier</th>
             <th className="px-4 py-3 font-medium text-gray-600">Language</th>
-            <th className="px-4 py-3 font-medium text-gray-600 text-center">Score</th>
-            <th className="px-4 py-3 font-medium text-gray-600">Submitted</th>
             <th className="px-4 py-3 font-medium text-gray-600 text-center">Code</th>
+            <th className="px-4 py-3 font-medium text-gray-600">Submitted At</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-gray-200">
@@ -55,11 +53,6 @@ const Leaderboard = ({ problemId }) => {
               <tr key={entry.submissionId} className="hover:bg-gray-50">
                 <td className="px-4 py-3 font-bold text-gray-700">#{index + 1}</td>
                 <td className="px-4 py-3 font-medium text-gray-800">{entry.username}</td>
-                <td className="px-4 py-3">
-                  <span className="bg-gray-100 text-gray-700 text-xs font-mono px-2 py-1 rounded">
-                    {entry.language}
-                  </span>
-                </td>
                 <td className="px-4 py-3 font-bold text-center">
                   <span className={`px-2 py-1 rounded-full text-xs ${
                       entry.gamifiedRank === 'S-Rank' ? 'bg-purple-100 text-purple-800' :
@@ -70,7 +63,11 @@ const Leaderboard = ({ problemId }) => {
                     {entry.gamifiedRank}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-gray-500">{new Date(entry.createdAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3">
+                  <span className="bg-gray-100 text-gray-700 text-xs font-mono px-2 py-1 rounded">
+                    {entry.language}
+                  </span>
+                </td>
                 <td className="px-4 py-3 text-center">
                   <button
                     onClick={() => setSelectedSubmission(entry)}
@@ -79,6 +76,7 @@ const Leaderboard = ({ problemId }) => {
                     View
                   </button>
                 </td>
+                <td className="px-4 py-3 text-gray-500">{new Date(entry.createdAt).toLocaleDateString()}</td>
               </tr>
             ))
           )}

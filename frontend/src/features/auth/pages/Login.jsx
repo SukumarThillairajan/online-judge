@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { Link, useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import { apiClient } from '../../../api/apiClient';
 
 export default function Login() {
     const { register, handleSubmit, formState: { errors, isSubmitting }, setError } = useForm();
@@ -17,7 +17,7 @@ export default function Login() {
                 password: data.password,
             };
 
-            await axios.post('/api/auth/login', payload);
+            await apiClient.post('/api/auth/login', payload);
 
             // If successful, navigate to the home/dashboard page
             navigate('/');

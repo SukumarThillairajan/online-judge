@@ -1,5 +1,5 @@
 import { eq, desc, and } from 'drizzle-orm';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { db } from "../../database/db_connector.js";
 import { problems, submissions, interviewSessions } from "../../database/schema.js";
 import { submissionQueue } from '../../queues/submissionQueue.js';
@@ -25,7 +25,7 @@ export const startInterview = async (req, res) => {
         const userId = req.user.userId; // Extracted safely from requireAuth middleware
 
         // Generate a unique session ID for this specific interview attempt
-        const sessionId = uuidv4();
+        const sessionId = crypto.randomUUID();
 
         // Create a new interview session in the database
         await db.insert(interviewSessions).values({

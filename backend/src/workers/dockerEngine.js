@@ -6,6 +6,21 @@ import fs from 'fs/promises';
 // Promisifying 'exec' which is by default callback-based into Promise or Async-Await -based.
 const execPromise = util.promisify(exec);
 
+//-----------------------
+// Sandbox resource limits
+//-----------------------
+
+// The hard memory ceiling for a single execution.
+// IMPORTANT: '--memory-swap' MUST be passed alongside '--memory' and set to the SAME value.
+// If '--memory-swap' is omitted, Docker silently defaults it to (2 x --memory), which lets a
+// submission use 256 MB of RAM PLUS 256 MB of swap before the kernel steps in. Setting both to
+// the same value disables swap for the container entirely and makes the limit a true 256 MB.
+const MEMORY_LIMIT = "256m";
+
+// A container killed by the kernel's OOM killer receives SIGKILL (signal 9),
+// and Docker surfaces that to the CLI as exit code 128 + 9 = 137.
+const OOM_EXIT_CODE = 137;
+
 export const languageConfigs = {
     c: {
         fileName: "main.c",
@@ -84,7 +99,7 @@ export const runCode = async(workerDirPath, hostDirPath, language, inputData) =>
     await fs.writeFile(inputFilePath, inputData || "");
 
     const fullRunCommand = `${config.runCommand} ${config.runArgs.join(" ")}`;
-    const runDockerCommand = `docker run --rm --network none --memory 256m -v "${hostDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullRunCommand} < /app/input.txt"`;
+    const runDockerCommand = `docker run --rm --network none --memory ${MEMORY_LIMIT} --memory-swap ${MEMORY_LIMIT} -v "${hostDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullRunCommand} < /app/input.txt"`;
 
     try {
         const {stdout, stderr} = await execPromise(runDockerCommand, { timeout: 3000 }); // 3-second timeout
@@ -94,10 +109,25 @@ export const runCode = async(workerDirPath, hostDirPath, language, inputData) =>
         };
     }
     catch (error) {
+        // 1. Time Limit Exceeded.
+        // Node's own 'exec' timeout fired and killed the docker client with SIGTERM.
+        // This is checked FIRST because a timed-out process has no meaningful exit code to inspect.
         if (error.killed && error.signal === 'SIGTERM') {
             return {
                 success: false,
                 error: "Time Limit Exceeded",
+            };
+        }
+
+        // 2. Memory Limit Exceeded.
+        // The container blew past the cgroup ceiling and the kernel's OOM killer sent SIGKILL,
+        // which Docker reports as exit code 137. Since the sandbox runs with '--network none'
+        // and nothing else on the host targets these containers, a 137 here is an OOM kill.
+        if (error.code === OOM_EXIT_CODE) {
+            return {
+                success: false,
+                error: "Memory Limit Exceeded",
+                details: `The process exceeded the ${MEMORY_LIMIT.toUpperCase()} memory limit and was terminated.`
             };
         }
 

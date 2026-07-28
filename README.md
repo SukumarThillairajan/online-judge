@@ -1,8 +1,8 @@
-# Online Judge — AI Mock Interviewer
+# Online Judge - AI Mock Interviewer
 
 An online judge that does not just grade your code. It interviews you.
 
-Pick a problem and you are dropped into a 45-minute mock interview with an AI examiner that runs a real interview loop: it withholds the constraints until you ask for them, refuses to let you write code before you have explained your approach, pushes back on brute force, and watches your editor while you work. When the timer stops, your transcript and your final submission are graded against a 100-point rubric and mapped to a rank.
+Pick a problem and you are dropped into a 45-minute mock interview with an AI examiner that runs a real interview loop: it withholds the constraints until you ask for them, refuses to let you write code before you have explained your approach, pushes back on brute force, and watches your editor while you work. When the timer stops, your transcript and your final submission are graded against a 100-point rubric and mapped to a gamified rank.
 
 Underneath it is a full online judge — sandboxed multi-language execution, hidden test cases, verdicts, and per-problem leaderboards.
 
@@ -31,8 +31,8 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
 
 ### The AI Interviewer
 
-- **Six-phase state machine.** Greeting → problem reveal → approach discussion → complexity analysis → coding → follow-ups. The model is prompt-constrained to advance one step at a time and never to write your solution for you.
-- **Earned information.** Sample test cases are handed over on request. Constraints stay hidden until you ask — or until you propose a brute force and get pushed to optimize.
+- **Six-phase state machine.** Greeting → Problem reveal → Approach discussion → Complexity analysis → Coding → Follow-ups. The model is prompt-constrained to advance one step at a time and never to write your solution for you.
+- **Earned information.** Sample test cases are handed over on request. Constraints stay hidden until you ask or until you propose a brute force and get pushed to optimize.
 - **Ghost prompts.** The interviewer receives machine-generated observations you never see: you have been idle for five minutes, your custom run produced the wrong output, your submission failed on a hidden edge case. It reacts to what you *do*, not only to what you type in chat.
 - **Token-by-token streaming** over Server-Sent Events, so replies appear as they are generated.
 - **Explicit exits.** Navigating away from a live interview raises a three-way guard: stay, leave ungraded, or end and grade. Nothing about the session is kept in browser storage — the transcript lives in Redis and the session row in Postgres.
@@ -47,7 +47,7 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
 
 ### Scoring
 
-- **Four-pillar rubric** (100 points): algorithms, code quality and edge cases, communication and discovery, problem solving and speed.
+- **Four-pillar rubric** (100 points): data structure & algorithms, code quality and edge cases, communication and discovery, problem solving and speed.
 - **Gamified ranks** from E-rank to S-rank, awarded per attempt rather than globally.
 - **Per-problem leaderboards** sorted by score with earliest submission as the tie-breaker, showing each user's single best attempt.
 
@@ -73,7 +73,7 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
      │   │  Express 5 API Server    │        │   BullMQ Worker         │     │
      │   │  (Docker container)      │        │   (concurrency: 5)      │     │
      │   │                          │        │                         │     │
-     │   │  auth · problems ·       │◀──────▶│   evaluate-code         │     │
+     │   │  auth · problems ·       │◀─────▶│   evaluate-code         │     │
      │   │  submissions · interviews│  jobs  │   run-code              │     │
      │   └───────┬──────────┬───────┘        └────────────┬────────────┘     │
      │           │          │                             │                  │
@@ -86,7 +86,7 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
      │           │          │             │  --network none           │      │
      │           │          │             │  --memory 256m · --rm     │      │
      │           │          │             └───────────────────────────┘      │
-     └───────────┼──────────┼──────────────────────────────────────────────────┘
+     └───────────┼──────────┼────────────────────────────────────────────────┘
                  │          │
      ┌───────────┘          └──────────────┬──────────────────────┐
      ▼                                     ▼                      ▼
@@ -152,7 +152,6 @@ online-judge/
 │   ├── HLD.md                         # V2 High-Level Design (current)
 │   ├── HLD_V1.md                      # V1 High-Level Design (archived)
 │   └── OJ_Project_V1_HLD.pdf
-├── postman/                           # API collection with per-verdict examples
 └── Dockerfile                         # Multi-stage backend image
 ```
 
@@ -170,7 +169,21 @@ online-judge/
 
 ### 1. Build the C/C++ sandbox image
 
-C and C++ run in a locally built image tagged `gcc-alpine`. It must provide `gcc`, `g++`, the C library headers, and the AddressSanitizer / UndefinedBehaviorSanitizer runtimes that `-lasan` and `-lubsan` link against — the compile step will fail without them.
+C and C++ run in a locally built image tagged `gcc-alpine`. Create `Dockerfile.gcc`:
+
+```dockerfile
+# Start with the tiny 5MB Alpine Linux OS
+FROM alpine:latest
+
+# Install only the C compiler, C++ compiler, and standard math/C libraries
+RUN apk add --no-cache gcc g++ musl-dev
+```
+
+Then build it under the tag the execution engine expects:
+
+```bash
+docker build -f Dockerfile.gcc -t gcc-alpine .
+```
 
 Pull the rest so the first submission is not slowed down by a cold fetch:
 
@@ -268,6 +281,8 @@ All routes require the JWT cookie except `POST /api/auth/register`, `POST /api/a
 | `POST` | `/api/problems` | **Admin.** Create a problem with its hidden test cases, transactionally. |
 | `DELETE` | `/api/problems/:id` | **Admin.** Delete a problem and cascade its test cases. |
 
+> **Note on the admin role.** There is no admin portal in the web app. The frontend never sends a `role`, so everyone who signs up through the UI is a `USER`. An admin is created by calling `POST /api/auth/register` directly from a terminal or an API client with `"role": "ADMIN"` in the body, and problems are authored the same way — by hitting the admin endpoints directly with that account's cookie. A first-class admin UI is on the roadmap.
+
 ### Submissions
 
 | Method | Endpoint | Description |
@@ -295,13 +310,11 @@ All routes require the JWT cookie except `POST /api/auth/register`, `POST /api/a
 | :---- | :---- | :---- |
 | `GET` | `/` | Health check. |
 
-A Postman collection covering every endpoint — with saved examples for each verdict in each language — lives in `postman/`.
-
 ---
 
 ## Execution Sandbox
 
-| Language | Image | Compile / syntax check | Run |
+| Language | Image | Compile / Syntax check | Run |
 | :---- | :---- | :---- | :---- |
 | C | `gcc-alpine` | `gcc -fsanitize=address,undefined -fno-sanitize-recover=all -g -Wall -Werror` | `/app/main` |
 | C++ | `gcc-alpine` | `g++ -fsanitize=address,undefined -fno-sanitize-recover=all -g -Wall -Werror` | `/app/main` |
@@ -309,7 +322,9 @@ A Postman collection covering every endpoint — with saved examples for each ve
 | Python | `python:3.11-slim` | `python -m py_compile` | `python -W error` |
 | JavaScript | `node:20-alpine` | `node -c` | `node --use_strict --throw-deprecation` |
 
-**Limits:** 256 MB memory, 3 s execution, 10 s compilation, `--network none`, `--rm`.
+**Limits:** 256 MB memory (`--memory 256m --memory-swap 256m` — both are needed, or Docker grants an extra 256 MB of swap), 3 s execution, 10 s compilation, `--network none`, `--rm`.
+
+Failures are classified by how the process died: a SIGTERM from the execution timeout is a **Time Limit Exceeded**, exit code 137 (the kernel's OOM killer) is a **Memory Limit Exceeded**, and any other non-zero exit is a **Runtime Error** with the trace preserved.
 
 **Verdicts:** `Pending`, `Accepted`, `Compilation Error`, `Runtime Error`, `Time Limit Exceeded`, `Memory Limit Exceeded`, `Wrong Answer`, `Internal System Error`.
 
@@ -347,25 +362,44 @@ An empty or template-only submission is floored at 0. The UI shows only the tier
 
 **Frontend → Vercel.** `vercel.json` rewrites all paths to `index.html` for client-side routing. Set `VITE_API_BASE_URL` to your API origin.
 
-**Backend + worker → AWS EC2.** Build the multi-stage image from the repository root:
+**Backend + Worker → AWS EC2.** Build the multi-stage image from the repository root:
 
 ```bash
 docker build -t online-judge-backend .
 ```
 
-The production stage installs `docker-cli` so the worker can reach the host daemon. Run it with the host Docker socket and the temp workspace mounted:
+Push it to ECR, then run the stack on the instance with `docker-compose.yml`. The same image is started twice — once as the API server, once as the worker — alongside Redis:
 
-```bash
-docker run -d \
-  --name online-judge-backend \
-  --env-file backend/.env \
-  -p 5000:5000 \
-  -v /var/run/docker.sock:/var/run/docker.sock \
-  -v /home/ubuntu/app/temp:/app/temp \
-  online-judge-backend
+```yaml
+services:
+  redis:
+    image: redis:alpine
+    restart: always
+
+  api:
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/my-oj-server/backend:latest
+    command: npm run start
+    ports:
+      - "3000:3000"
+    env_file: .env
+    restart: always
+    depends_on:
+      - redis
+
+  worker:
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/my-oj-server/backend:latest
+    command: node src/workers/submission.worker.js
+    env_file: .env
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      # This allows the worker to create compilers on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/ubuntu/app/temp:/app/temp
 ```
 
-The two paths in that last mount are not interchangeable — the worker writes through `/app/temp` while instructing the host daemon to mount `/home/ubuntu/app/temp`. Changing one without the other will break every execution.
+Only the worker mounts the Docker socket — the API server never launches containers. The two paths in that last volume are not interchangeable: the worker writes through `/app/temp` while instructing the host daemon to mount `/home/ubuntu/app/temp`. Changing one without the other will break every execution.
 
 **Database → Supabase.** Apply migrations with `npx drizzle-kit migrate` before the first deploy.
 
@@ -377,7 +411,6 @@ The two paths in that last mount are not interchangeable — the worker writes t
 
 - **[docs/HLD.md](docs/HLD.md)** — the V2 High-Level Design: schema, endpoints, execution pipeline, AI engine, NFRs, deployment, roadmap.
 - **[docs/HLD_V1.md](docs/HLD_V1.md)** — the original V1 design, kept for reference.
-- **`postman/`** — full API collection with per-verdict examples.
 
 ---
 

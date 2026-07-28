@@ -4,48 +4,8 @@
 
 ## **0\. High-Level Architecture Diagram**
 
-```
-                                  ┌──────────────────────────────┐
-                                  │        Vercel (CDN)          │
-                                  │  React 19 + Vite SPA         │
-                                  │  Monaco Editor · AI Chatbox  │
-                                  └──────────────┬───────────────┘
-                                                 │
-                        HTTPS (axios, withCredentials: true)
-                        + Server-Sent Events (fetch ReadableStream)
-                                                 │
-                                                 ▼
-     ┌───────────────────────────────────────────────────────────────────────┐
-     │                       AWS EC2 Instance (Ubuntu)                       │
-     │                                                                       │
-     │   ┌──────────────────────────┐        ┌─────────────────────────┐     │
-     │   │  Express 5 API Server    │        │   BullMQ Worker         │     │
-     │   │  (Docker container)      │        │   (concurrency: 5)      │     │
-     │   │                          │        │                         │     │
-     │   │  auth · problems ·       │◀──────▶│   evaluate-code         │     │
-     │   │  submissions · interviews│  jobs  │   run-code              │     │
-     │   └───────┬──────────┬───────┘        └────────────┬────────────┘     │
-     │           │          │                             │                  │
-     │           │          │                  docker-cli │ (host socket)    │
-     │           │          │                             ▼                  │
-     │           │          │             ┌───────────────────────────┐      │
-     │           │          │             │  Ephemeral Sandboxes      │      │
-     │           │          │             │  gcc-alpine · corretto:21 │      │
-     │           │          │             │  python:3.11 · node:20    │      │
-     │           │          │             │  --network none           │      │
-     │           │          │             │  --memory 256m · --rm     │      │
-     │           │          │             └───────────────────────────┘      │
-     └───────────┼──────────┼──────────────────────────────────────────────────┘
-                 │          │
-     ┌───────────┘          └──────────────┬──────────────────────┐
-     ▼                                     ▼                      ▼
-┌───────────────┐                 ┌──────────────────┐   ┌──────────────────┐
-│  Redis        │                 │  PostgreSQL      │   │  Google Gemini   │
-│  BullMQ queue │                 │  (Supabase)      │   │  gemini-3.1-     │
-│  chat cache   │                 │  Drizzle ORM     │   │  flash-lite      │
-│  run results  │                 │                  │   │  (chat + grader) │
-└───────────────┘                 └──────────────────┘   └──────────────────┘
-```
+***\[Architecture Diagram Pending\]***   
+*A high-level system architecture diagram illustrating the data flow between the React Frontend, the Node.js/Express Backend, the PostgreSQL Database, the Redis/BullMQ queue, the Docker Execution Pipeline, and the Gemini AI Interview Engine is currently being drafted and will be inserted here shortly.* 
 
 ## **1\. Tech Stack**
 
@@ -214,6 +174,16 @@ Every route below is authenticated except the health check and the two public au
 | python | python:3.11-slim | `python -m py_compile` | `python -W error` |
 | javascript | node:20-alpine | `node -c` | `node --use_strict --throw-deprecation` |
 
+Four of the five images are pulled unmodified from Docker Hub. The `gcc-alpine` image is built locally from a deliberately minimal `Dockerfile.gcc` — the smaller the sandbox image, the smaller the attack surface and the faster the cold start:
+
+```dockerfile
+# Start with the tiny 5MB Alpine Linux OS
+FROM alpine:latest
+
+# Install only the C compiler, C++ compiler, and standard math/C libraries
+RUN apk add --no-cache gcc g++ musl-dev
+```
+
 **Sanitizer-backed correctness.** C and C++ submissions are compiled with **AddressSanitizer** and **UndefinedBehaviorSanitizer** in non-recovering mode. Out-of-bounds writes, use-after-free, signed integer overflow and similar latent bugs abort the process immediately and are reported as a **Runtime Error** rather than silently producing a wrong answer. The interpreted languages are held to an equivalent standard by promoting warnings to errors (`-W error`, `--throw-deprecation`, `-Werror`).
 
 ### **4.2 Sequential Evaluation Pipeline (Submit Route)**
@@ -221,9 +191,10 @@ Every route below is authenticated except the health check and the two public au
 1. **Queue Pickup:** The BullMQ worker picks up an `evaluate-code` job for a *Pending* submission.  
 2. **Workspace Isolation:** A UUID-named temporary directory is created and the source file is written into it. The worker writes through its own container path (`/app/temp/<uuid>`) while mounting the equivalent **host** path (`/home/ubuntu/app/temp/<uuid>`) into the sandbox — the worker drives the host Docker daemon, so the bind-mount source must always be expressed in host coordinates.  
 3. **Compilation:** A throwaway container compiles or syntax-checks the source under a 10-second ceiling. Failure short-circuits the pipeline with a **Compilation Error** verdict and the raw compiler `stderr` preserved in `error_details`.  
-4. **Sequential Streaming:** The worker fetches every hidden test case for the problem and iterates through them. Each test case runs in a fresh container started with `--rm --network none --memory 256m`, with stdin redirected from a file written into the mounted workspace.  
+4. **Sequential Streaming:** The worker fetches every hidden test case for the problem and iterates through them. Each test case runs in a fresh container started with `--rm --network none --memory 256m --memory-swap 256m`, with stdin redirected from a file written into the mounted workspace. The failure branch is classified by inspecting *how* the process died:  
    * If the wall clock exceeds 3 seconds, `exec` sends SIGTERM: **"Time Limit Exceeded"** (TLE).  
-   * If the process aborts, segfaults, trips a sanitizer, or is OOM-killed by the 256 MB cgroup limit: **"Runtime Error"** (RTE), with the trace preserved.  
+   * If the kernel's OOM killer terminates the container for breaching the cgroup ceiling, Docker reports exit code **137** (128 \+ SIGKILL): **"Memory Limit Exceeded"** (MLE). Because the sandbox runs with `--network none` and nothing else on the host targets these containers, a 137 is unambiguously an OOM kill.  
+   * If the process aborts, segfaults, trips a sanitizer, or exits non-zero for any other reason: **"Runtime Error"** (RTE), with the trace preserved.  
    * If stdout does not match the expected output: **"Wrong Answer"** (WA), recording the failing input, the expected output and the actual output.  
 5. **Final Verdict:** If the loop completes without breaking, the database is updated to **"Accepted"**. Every container is destroyed by `--rm`, and the temporary directory is removed in a `finally` block regardless of outcome.
 
@@ -241,7 +212,7 @@ The `run-code` job follows the same compile-then-execute path but against a sing
 
 ## **5\. AI Interview Engine**
 
-This is the defining addition of V2. The Coding Arena is no longer a solitary editor — it is a proctored, conversational interview with a stateful examiner.
+This is the defining addition of V2. The Coding Arena is no longer a solitary editor — it is a conversational interview with a stateful examiner.
 
 ### **5.1 Session Lifecycle**
 
@@ -292,7 +263,7 @@ The archived transcript and the final code are sent to Gemini in **JSON mode** (
 | Pillar | Points | What it measures |
 | :---- | :---- | :---- |
 | Data Structures & Algorithms | 25 | Optimality of the approach and correctness of the Big-O analysis. |
-| Code Quality & Edge Cases | 25 | Readability, formatting, and explicit handling of empty inputs, negatives and bounds. |
+| Code Quality & Edge Cases | 25 | Readability, formatting, and explicit handling of edge cases. |
 | Communication & Discovery | 25 | Whether constraints and edge cases were probed **before** coding, and whether logic was dry-run aloud. |
 | Problem Solving & Speed | 25 | Independence (every hint costs points), follow-up accuracy, and time to Accepted. |
 
@@ -324,7 +295,7 @@ The final write is wrapped in a single database transaction: the submission rece
 * **Page 1: Authentication Space** (`/login`, `/register`) — React Hook Form validation, JWT cookie set on success.  
 * **Page 2: Dashboard** (`/dashboard`) — the problem list, each row annotated with the user's **best gamified rank** for that problem, served by the window-function CTE behind `/api/problems/user-status`.  
 * **Page 3: Coding Arena** (`/problems/:id`) — a split layout: Monaco editor, language selector, custom-input panel and terminal on one side; the AI chat interface and the live countdown on the other. *Run Code* and *Submit Code* remain, now wired into the ghost-prompt pipeline.  
-* **Page 4: Analytics & Leaderboard** (`/problems/:id/submissions`) — three tabs: My Submissions, All Submissions, and the rank-ordered Leaderboard.
+* **Page 4: Submissions & Leaderboard** (`/problems/:id/submissions`) — two tabs: My Submissions and the rank-ordered Leaderboard.
 
 All application routes sit behind a `ProtectedRoute` wrapper that resolves `GET /api/auth/verify` through TanStack Query (`retry: false`, 5-minute `staleTime`), so an expired cookie redirects to login instead of rendering a broken shell.
 
@@ -353,6 +324,8 @@ Attempting to leave an active interview raises a modal offering three explicit c
 * **Standard User Role:** Can read available problems, start interviews, run and submit code, view their own submission history, and view the global feed and leaderboard for a problem.  
 * **Admin Role:** Granted create and delete access over problems and their hidden test cases. The `requireAdmin` middleware runs *after* `requireAuth` and explicitly verifies the `role` claim in the JWT before allowing access; unauthorized attempts are logged with the offending user ID and IP address.
 
+**There is no admin portal.** The registration UI never submits a `role`, so every account created through the web app is a standard `USER`. Elevation is a deliberate out-of-band operation: an administrator is provisioned by calling `POST /api/auth/register` directly from a terminal or an API client with `"role": "ADMIN"` in the request body, and problem authoring is performed the same way — by invoking the admin endpoints directly with that account's cookie. Keeping the privileged surface off the public frontend means the only path to it is one that already requires shell or API-client access. A first-class admin console is listed in the V3 roadmap (§11).
+
 ### **7.2 Session Ownership Checks**
 
 RBAC alone does not protect interview data, since every candidate is a standard user. Both `/api/interviews/chat` and `/api/interviews/finish` therefore re-query the session with a three-way predicate — `session_id` **AND** `user_id` **AND** `problem_id` — and return 404 on any mismatch. A leaked or guessed `sessionId` is useless to another account.
@@ -361,7 +334,7 @@ RBAC alone does not protect interview data, since every candidate is a standard 
 
 ### **8.1 Resource Constraints on Docker**
 
-* **Memory Limit:** 256 MB per container (`--memory 256m`).  
+* **Memory Limit:** 256 MB per container (`--memory 256m --memory-swap 256m`). Both flags are required: passing `--memory` alone makes Docker silently default the swap ceiling to *twice* the memory value, which would hand a submission 256 MB of RAM plus 256 MB of swap. Setting them equal disables swap for the container and makes the limit a true 256 MB. A breach is detected via exit code 137 and recorded as **Memory Limit Exceeded**.  
 * **Execution Time Limit:** 3 seconds wall clock per test case.  
 * **Compilation Time Limit:** 10 seconds.  
 * **Network:** `--network none` — sandboxes have no network interface whatsoever, eliminating data exfiltration and outbound abuse.  
@@ -417,9 +390,40 @@ The process refuses to start in a half-configured state. `JWT_SECRET_KEY`, `DATA
 The system is deployed using a decoupled, cloud-native architecture:
 
 * **Frontend:** Hosted on **Vercel**. `vercel.json` rewrites all paths to `index.html` for client-side routing, and `VITE_API_BASE_URL` points the built bundle at the production API domain. Locally, the Vite dev server proxies `/api` to `localhost:3000` instead, so the same code runs unmodified in both environments.  
-* **Backend & Worker:** A **multi-stage Docker image** (a `node:18-alpine` builder installing dependencies via `npm ci`, then a slim production stage) running on an **AWS EC2 instance**. The production stage additionally installs `docker-cli` so the worker can drive the **host's** Docker engine to launch sibling sandbox containers — the container never runs a nested daemon of its own.  
+* **Backend & Worker:** A **multi-stage Docker image** (a `node:18-alpine` builder installing dependencies via `npm ci`, then a slim production stage) published to **AWS ECR** and pulled onto an **AWS EC2 instance**. The production stage additionally installs `docker-cli` so the worker can drive the **host's** Docker engine to launch sibling sandbox containers — the container never runs a nested daemon of its own.  
+* **Orchestration:** A `docker-compose.yml` on the instance runs three services. The *same* backend image is started twice under different commands — `api` serving Express on port 3000, and `worker` running the BullMQ consumer — alongside a `redis` container. Only the `worker` service mounts `/var/run/docker.sock` and the shared `/home/ubuntu/app/temp` workspace, because it is the only process that ever launches a sandbox. Splitting the API and the worker into separate containers means either can be restarted or scaled without disturbing the other.  
+
+```yaml
+services:
+  redis:
+    image: redis:alpine
+    restart: always
+
+  api:
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/my-oj-server/backend:latest
+    command: npm run start
+    ports:
+      - "3000:3000"
+    env_file: .env
+    restart: always
+    depends_on:
+      - redis
+
+  worker:
+    image: <AWS_ACCOUNT_ID>.dkr.ecr.<AWS_REGION>.amazonaws.com/my-oj-server/backend:latest
+    command: node src/workers/submission.worker.js
+    env_file: .env
+    restart: always
+    depends_on:
+      - redis
+    volumes:
+      # This allows the worker to create compilers on the host
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/ubuntu/app/temp:/app/temp
+```
+
 * **Database:** **PostgreSQL on Supabase**, completely decoupling the storage layer from the compute layer. Schema changes ship as versioned `drizzle-kit` migrations checked into the repository.  
-* **Cache & Queue:** **Redis**, reached over `REDIS_URL`, serving simultaneously as the BullMQ backend, the live interview transcript store, and the run-result cache.  
+* **Cache & Queue:** **Redis**, running as a sibling container in the same Compose stack and reached over `REDIS_URL`, serving simultaneously as the BullMQ backend, the live interview transcript store, and the run-result cache.  
 * **TLS:** The API is served over HTTPS on a dedicated subdomain, which is a hard requirement for the `secure` \+ `sameSite: none` cookie to cross from Vercel to EC2.
 
 ## **10\. Scalability**
@@ -432,10 +436,14 @@ The system is deployed using a decoupled, cloud-native architecture:
 
 ## **11\. V3 Roadmap**
 
+* **Admin Console:** A first-class UI for problem authoring, test case management and submission forensics, replacing direct API calls.
 * **Voice Interviews:** Speech-to-text for the candidate and text-to-speech for the interviewer, closing the last gap between this and a real phone screen.  
 * **WebSocket Upgrade:** SSE is one-directional by design. A bidirectional channel would enable true collaborative editing, live "the interviewer is typing" affordances, and server-driven timer authority.  
 * **Server-Authoritative Timer:** The 45-minute clock currently runs client-side. Moving the deadline into the Redis session record removes the last piece of trust placed in the browser.  
+* **Single-Container Evaluation:** Today the engine starts one container *per test case*, so a problem with twenty hidden cases pays the container startup cost twenty times — and that startup, not the candidate's code, dominates the wall clock for most submissions. The optimization is to boot **one container per submission** and iterate the test cases inside it via a small harness script that reads each input, runs the binary, and emits a per-case result. This requires reworking how the two resource verdicts are detected, because both currently ride on the container boundary:  
+  * **Time Limit Exceeded:** the 3-second ceiling is presently the `docker run` wall clock, which disappears once a single container spans every case. The harness must instead impose a per-case deadline from the inside — `timeout 3s` around each invocation, or a `setrlimit(RLIMIT_CPU)` on the child — and report a distinct exit status so the worker can still attribute the TLE to the exact test case that caused it.  
+  * **Memory Limit Exceeded:** `--memory 256m` is a cgroup applied to the *whole* container. Shared across every test case, one greedy case would OOM-kill the container and destroy the results of all the cases that already passed. The fix is to move the ceiling down to the process — `setrlimit(RLIMIT_AS)` or `ulimit -v` per invocation — so a single case can be killed and reported while the harness survives to run the remainder. Note that this is *stricter* than the per-container detection the engine performs today: the current exit-code-137 check correctly identifies an OOM kill, but with one container spanning every test case it could no longer attribute that kill to the specific case responsible.  
+  * **Isolation trade-off:** reusing one container means consecutive test cases are no longer perfectly isolated — leftover files, lingering background threads, or a corrupted heap could leak from one case into the next. The harness must reset the working directory between cases and treat any non-zero harness-level failure as a full-submission Internal System Error rather than silently mis-scoring the remaining cases.  
 * **Multi-Round Interviews:** Chaining two or three problems into a single graded loop, with a cumulative hiring-committee-style verdict.  
-* **Structured Observability:** OpenTelemetry traces spanning the API, the queue and the sandbox, plus per-language execution metrics and AI token accounting.  
-* **Admin Console:** A first-class UI for problem authoring, test case management and submission forensics, replacing direct API calls.  
-* **Editorial Generation:** Using the archived transcripts to generate personalized post-interview editorials targeted at each candidate's specific weaknesses.
+* **Structured Observability:** OpenTelemetry traces spanning the API, the queue and the sandbox, plus per-language execution metrics and AI token accounting.    
+* **Editorial Generation using AI:** Using the archived transcripts to generate personalized post-interview editorials targeted at each candidate's specific weaknesses.

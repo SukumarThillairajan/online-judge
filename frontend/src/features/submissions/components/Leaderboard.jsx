@@ -1,28 +1,107 @@
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../../../api/apiClient.js';
+
+// Using react-syntax-highlighter for a better code viewing experience.
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+
 const Leaderboard = ({ problemId }) => {
+  // State for the code-viewing modal
+  const [selectedSubmission, setSelectedSubmission] = useState(null);
+
+  const { data: leaderboard = [], isLoading, error } = useQuery({
+    queryKey: ['leaderboard', problemId],
+    queryFn: async () => {
+      const response = await apiClient.get(`/api/submissions/leaderboard/problem/${problemId}`);
+      return response.data.data || [];
+    },
+    // Keep data fresh but don't refetch too aggressively
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-gray-500">Loading leaderboard...</div>;
+  }
+
+  if (error) {
+    return <div className="p-8 text-center text-red-500">Error fetching leaderboard: {error.message}</div>;
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center h-full min-h bg-white p-8 text-center">
-      
-      {/* Cool Trophy/Flask Icon */}
-      <div className="bg-blue-50 text-blue-600 p-5 rounded-full mb-6 shadow-sm border border-blue-100">
-        <svg className="w-12 h-12" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
-        </svg>
+    <div className="bg-white rounded-lg overflow-hidden shadow">
+      <table className="min-w-full text-left text-sm">
+        <thead className="bg-gray-50 border-b border-gray-200">
+          <tr>
+            <th className="px-4 py-3 font-medium text-gray-600">Rank</th>
+            <th className="px-4 py-3 font-medium text-gray-600">User</th>
+            <th className="px-4 py-3 font-medium text-gray-600 text-center">Tier</th>
+            <th className="px-4 py-3 font-medium text-gray-600">Language</th>
+            <th className="px-4 py-3 font-medium text-gray-600 text-center">Code</th>
+            <th className="px-4 py-3 font-medium text-gray-600">Submitted At</th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {leaderboard.length === 0 ? (
+            <tr>
+              <td colSpan="6" className="text-center py-10 text-gray-500">
+                No accepted submissions yet. Be the first!
+              </td>
+            </tr>
+          ) : (
+            leaderboard.map((entry, index) => (
+              <tr key={entry.submissionId} className="hover:bg-gray-50">
+                <td className="px-4 py-3 font-bold text-gray-700">#{index + 1}</td>
+                <td className="px-4 py-3 font-medium text-gray-800">{entry.username}</td>
+                <td className="px-4 py-3 font-bold text-center">
+                  <span className={`px-2 py-1 rounded-full text-xs ${
+                      entry.gamifiedRank === 'S-Rank' ? 'bg-purple-100 text-purple-800' :
+                      entry.gamifiedRank === 'A-Rank' ? 'bg-blue-100 text-blue-800' :
+                      entry.gamifiedRank === 'B-Rank' ? 'bg-green-100 text-green-800' :
+                      'bg-yellow-100 text-yellow-800'
+                    }`}>
+                    {entry.gamifiedRank}
+                  </span>
+                </td>
+                <td className="px-4 py-3">
+                  <span className="bg-gray-100 text-gray-700 text-xs font-mono px-2 py-1 rounded">
+                    {entry.language}
+                  </span>
+                </td>
+                <td className="px-4 py-3 text-center">
+                  <button
+                    onClick={() => setSelectedSubmission(entry)}
+                    className="text-blue-600 hover:text-blue-800 font-semibold"
+                  >
+                    View
+                  </button>
+                </td>
+                <td className="px-4 py-3 text-gray-500">{new Date(entry.createdAt).toLocaleDateString()}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+
+      {/* Code Viewing Modal */}
+      {selectedSubmission && (
+        <div className="fixed inset-0 bg-black/70 flex justify-center items-center z-50 p-4" onClick={() => setSelectedSubmission(null)}>
+          <div className="bg-gray-900 border border-gray-700 rounded-xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center p-4 border-b border-gray-700">
+              <h3 className="text-white font-bold">
+                {selectedSubmission.username}'s Submission
+              </h3>
+              <button onClick={() => setSelectedSubmission(null)} className="text-gray-400 hover:text-white text-2xl">&times;</button>
+            </div>
+            <div className="overflow-auto">
+              <SyntaxHighlighter language={selectedSubmission.language} style={vscDarkPlus} customStyle={{ margin: 0, borderRadius: '0 0 0.75rem 0.75rem' }}>
+                {selectedSubmission.code}
+              </SyntaxHighlighter>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
-
-      {/* Copy */}
-      <h2 className="text-2xl font-extrabold text-gray-900 mb-3 tracking-tight">
-        Leaderboard Compiling...
-      </h2>
-      <p className="text-gray-500 max-w-md mx-auto mb-8 leading-relaxed">
-        The global ranking system is currently undergoing complex analytical processing. Check back in Version 2.0 to see how your runtime and memory efficiency stacks up against the best!
-      </p>
-
-      {/* V2 Badge */}
-      <span className="bg-linear-to-r from-blue-600 to-indigo-600 text-white text-xs font-bold px-4 py-2 rounded-full uppercase tracking-widest shadow-md">
-        Coming in V2 Roadmap
-      </span>
-      
-    </div>
   );
 };
 

@@ -27,7 +27,7 @@ export const languageConfigs = {
         fileName: "Main.java",
         dockerImage: "amazoncorretto:21-alpine",
         compileCommand: "javac",
-        compileArgs: ["Xlint:all", "-Werror", "/app/Main.java"],
+        compileArgs: ["-Xlint:all", "-Werror", "/app/Main.java"],
         runCommand: "java",
         runArgs: ["Main"]
     },
@@ -78,6 +78,7 @@ export const compileCode = async(hostDirPath, language) => {
 export const runCode = async(workerDirPath, hostDirPath, language, inputData) => {
     const config = languageConfigs[language];
 
+    // Writing the test case input into a file
     // Node.js writes the file using the path inside its own container (workerDirPath)
     const inputFilePath = path.join(workerDirPath, "input.txt");
     await fs.writeFile(inputFilePath, inputData || "");

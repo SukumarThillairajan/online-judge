@@ -1,0 +1,2 @@
+ALTER TABLE "submissions" ADD COLUMN "session_id" uuid;--> statement-breakpoint
+ALTER TABLE "submissions" ADD CONSTRAINT "submissions_session_id_interview_sessions_session_id_fk" FOREIGN KEY ("session_id") REFERENCES "public"."interview_sessions"("session_id") ON DELETE no action ON UPDATE no action;

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import { apiClient } from '../../../api/apiClient';
 
 const Register = () => {
   const [formData, setFormData] = useState({
@@ -32,19 +33,10 @@ const Register = () => {
         emailId: formData.email,
         password: formData.password,
       };
-      const response = await fetch(`${API_URL}/api/auth/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
+      const response = await apiClient.post('/api/auth/register', payload);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data?.error || 'Registration failed. Please try again.');
+      if (response.status !== 201) {
+        throw new Error(response.data?.error || 'Registration failed. Please try again.');
       }
 
       navigate('/login');

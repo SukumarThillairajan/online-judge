@@ -1,0 +1,1 @@
+ALTER TABLE "interview_sessions" ALTER COLUMN "chat_history" DROP NOT NULL;

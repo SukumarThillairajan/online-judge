@@ -2,6 +2,8 @@ import dotenv from 'dotenv';
 import {Pool} from 'pg';
 import {drizzle} from 'drizzle-orm/node-postgres';
 
+import * as schema from "./schema.js";
+
 // Loads the variable from the .env file into the Node.js' process.env object
 dotenv.config();
 
@@ -18,7 +20,7 @@ const pool = new Pool({
 });
 
 // Wrapping the connection pool with Drizzle ORM
-export const db = drizzle(pool);
+export const db = drizzle(pool, {schema});
 
 export const testDbConnection = async () => {
     try {

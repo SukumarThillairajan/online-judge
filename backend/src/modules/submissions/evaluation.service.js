@@ -42,18 +42,20 @@ export const evaluateSubmission = async (code, language, testCases) => {
             if (!result.success) {
                 return {
                     verdict: result.error,
-                    failedAtTestCase: testCase.id,
-                    details: result.details
+                    details: result.details,
+                    errorDetails: { failedAtTestCase: testCase.testCaseId }
                 };
             }
 
             if (result.output !== testCase.output) {
                 return {
                     verdict: "Wrong Answer",
-                    failedAtTestCase: testCase.id,
-                    input: testCase.input,
-                    output: result.output,
-                    expectedOutput: testCase.output
+                    errorDetails: {
+                        failedAtTestCase: testCase.testCaseId,
+                        input: testCase.input,
+                        actualOutput: result.output,
+                        expectedOutput: testCase.output
+                    }
                 };
             }
         }
@@ -122,6 +124,7 @@ export const runCustomCode = async (code, language, customInput) => {
 
         return {
             status: "Success",
+            input: customInput,
             output: result.output
         };
     }

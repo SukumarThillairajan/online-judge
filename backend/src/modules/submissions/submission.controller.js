@@ -47,7 +47,7 @@ export const runCustomCode = async(req, res) => {
 };
 
 export const createSubmission = async(req, res) => {
-    const {problemId, code, language} = req.body;
+    const {problemId, code, language, sessionId} = req.body; // Added sessionId
     const userId = req.user.userId; // Extracted from requireAuth middleware (JWT cookie)
     let newSubmission;
 
@@ -78,7 +78,8 @@ export const createSubmission = async(req, res) => {
             userId,
             problemId,
             code,
-            language
+            language,
+            sessionId // Pass along the session ID if it exists. It will be null/undefined for normal submissions.
         }).returning({submissionId: submissions.submissionId}); // The schema sets the verdict to "Pending" by default.
         console.log(`New submission was inserted into the DB successfully. Pushing the submission ${newSubmission.submissionId} to the evaluation queue.`);
 
@@ -254,5 +255,54 @@ export const getMySubmissions = async(req, res) => {
             success: false,
             message: "Internal server error fetching my submissions."
         });
+    }
+};
+
+export const getProblemLeaderboard = async(req, res) => {
+    try {
+        const { problemId } = req.params;
+
+        // This query fetches all accepted submissions for the problem,
+        // joining with the users table to get usernames.
+        // It sorts them by the highest score first, then by the earliest submission time as a tie-breaker.
+        const leaderboardData = await db
+            .select({
+                submissionId: submissions.submissionId,
+                username: users.username,
+                language: submissions.language,
+                totalScore: submissions.totalScore,
+                gamifiedRank: submissions.gamifiedRank,
+                createdAt: submissions.createdAt,
+                code: submissions.code
+            })
+            .from(submissions)
+            .innerJoin(users, eq(submissions.userId, users.userId))
+            .where(
+                and(
+                    eq(submissions.problemId, problemId),
+                    eq(submissions.verdict, 'Accepted') // Only show successful submissions on the leaderboard
+                )
+            )
+            .orderBy(
+                desc(submissions.totalScore), // Primary sort: Highest Score
+                asc(submissions.createdAt)    // Tie-breaker: Who submitted first
+            );
+
+        // The query gets all accepted submissions. Now, we filter in JavaScript
+        // to ensure we only show the single best (highest score) submission for each user.
+        const uniqueUserLeaderboard = [];
+        const seenUsers = new Set();
+
+        for (const entry of leaderboardData) {
+            if (!seenUsers.has(entry.username)) {
+                seenUsers.add(entry.username);
+                uniqueUserLeaderboard.push(entry);
+            }
+        }
+
+        return res.status(200).json({ success: true, data: uniqueUserLeaderboard });
+    } catch (error) {
+        console.error("Error fetching problem leaderboard:", error);
+        return res.status(500).json({ success: false, message: "Internal server error fetching leaderboard." });
     }
 };

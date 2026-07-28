@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../../../api/apiClient.js';
 
 // A tiny, reusable button component that handles its own "Copied!" state
 const CopyButton = ({ textToCopy }) => {
@@ -31,10 +32,8 @@ const SubmissionsList = ({ problemId, type }) => {
   const { data: submissions = [], isLoading, error } = useQuery({
     queryKey: ['submissions', problemId, type],
     queryFn: async () => {
-      const response = await fetch(`${API_URL}/api/submissions/problem/${problemId}/${type}`, { credentials: 'include' });
-      if (!response.ok) throw new Error('Failed to fetch submissions');
-      const data = await response.json();
-      return data.data || [];
+      const response = await apiClient.get(`/api/submissions/problem/${problemId}/${type}`);
+      return response.data.data || [];
     }
   });
 
@@ -50,18 +49,18 @@ const SubmissionsList = ({ problemId, type }) => {
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50 sticky top-0 shadow-sm z-10">
           <tr>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Verdict</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Tier</th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Language</th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time</th>
+            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Code</th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Submitted At</th>
           </tr>
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {sortedSubmissions.map((sub) => (
             <tr 
               key={sub.submissionId} 
-              // 2. MAKE ROW CLICKABLE
-              onClick={() => setSelectedSubmission(sub)}
-              className="hover:bg-blue-50 cursor-pointer transition-colors"
+              className="hover:bg-gray-50 transition-colors"
             >
               <td className="px-6 py-4 whitespace-nowrap">
                 <span className={`font-bold ${
@@ -71,8 +70,27 @@ const SubmissionsList = ({ problemId, type }) => {
                   {sub.verdict}
                 </span>
               </td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                    !sub.gamifiedRank || sub.gamifiedRank === 'Unranked' ? 'bg-gray-100 text-gray-700' :
+                    sub.gamifiedRank === 'S-Rank' ? 'bg-purple-100 text-purple-800' :
+                    sub.gamifiedRank === 'A-Rank' ? 'bg-blue-100 text-blue-800' :
+                    sub.gamifiedRank === 'B-Rank' ? 'bg-green-100 text-green-800' :
+                    'bg-yellow-100 text-yellow-800'
+                  }`}>
+                  {sub.gamifiedRank || 'Unranked'}
+                </span>
+              </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700 font-mono">
                 {sub.language}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-center">
+                <button
+                  onClick={() => setSelectedSubmission(sub)}
+                  className="text-blue-600 hover:text-blue-800 font-semibold text-sm"
+                >
+                  View
+                </button>
               </td>
               <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                 {new Date(sub.createdAt).toLocaleString()}

@@ -1,6 +1,6 @@
 import {db} from "../../database/db_connector.js";
-import {roleEnum, problems, testCases} from "../../database/schema.js";
-import {eq} from "drizzle-orm";
+import {roleEnum, problems, testCases, submissions} from "../../database/schema.js";
+import {eq, sql, and, asc} from "drizzle-orm";
 
 //--------------------------
 // Public Routes (for Users)
@@ -54,6 +54,44 @@ export const getProblemById = async(req, res) => {
             success: false,
             message: "Internal Server Error during fetching the problem"
         });
+    }
+};
+
+export const getProblemsWithUserStatus = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+
+        // This CTE finds the best submission (highest score, then earliest time) for the current user for each problem they've attempted.
+        const userBestSubmissions = db.$with('user_best_submissions').as(
+            db.select({
+                problemId: submissions.problemId,
+                gamifiedRank: submissions.gamifiedRank,
+                rowNumber: sql`ROW_NUMBER() OVER (PARTITION BY ${submissions.problemId} ORDER BY ${submissions.totalScore} DESC, ${submissions.createdAt} ASC)`.as('rn')
+            })
+            .from(submissions)
+            .where(eq(submissions.userId, userId))
+        );
+
+        // The main query fetches ALL problems and LEFT JOINs them with the user's best submissions.
+        const problemsWithStatus = await db.with(userBestSubmissions).select({
+            problemId: problems.problemId,
+            problemName: problems.problemName,
+            difficulty: problems.difficulty,
+            // If a best submission exists (rn=1), we get its rank, otherwise it's null.
+            bestRank: userBestSubmissions.gamifiedRank 
+        })
+        .from(problems)
+        .leftJoin(userBestSubmissions, 
+            and(
+                eq(problems.problemId, userBestSubmissions.problemId),
+                eq(userBestSubmissions.rowNumber, 1)
+            ))
+        .orderBy(asc(problems.problemName));
+
+        return res.status(200).json({ success: true, data: problemsWithStatus });
+    } catch (error) {
+        console.error("Error fetching problems with user status:", error);
+        return res.status(500).json({ success: false, message: "Internal server error." });
     }
 };
 

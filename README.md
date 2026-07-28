@@ -384,5 +384,3 @@ The two paths in that last mount are not interchangeable — the worker writes t
 ## Author
 
 **Sukumar Thillairajan** — [github.com/SukumarThillairajan](https://github.com/SukumarThillairajan)
-
-Built as part of the AlgoUniversity Dev Season.

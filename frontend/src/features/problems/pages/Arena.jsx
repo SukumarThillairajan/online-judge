@@ -79,8 +79,9 @@ const Arena = () => {
     const startNewInterview = async () => {
       try {
         const res = await apiClient.post('/api/interviews/start', { problemId });
-        if (res.data && res.data.data?.sessionId) {
-          const newSessionId = res.data.data?.sessionId;
+
+        const newSessionId = res.data?.sessionId || res.data.data?.sessionId;
+        if (newSessionId) {
           setSessionId(newSessionId);
           setIsInterviewActive(true);
 
@@ -89,6 +90,9 @@ const Arena = () => {
             sessionId: newSessionId,
             problemId: problemId
           }));
+        }
+        else {
+          console.error("Failed to retrieve sessionId from backend response:", res.data);
         }
       } catch (error) {
         console.error("Failed to start interview session:", error);

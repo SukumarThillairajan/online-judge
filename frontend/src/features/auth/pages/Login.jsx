@@ -6,6 +6,7 @@ import { apiClient } from '../../../api/apiClient';
 export default function Login() {
     const { register, handleSubmit, formState: { errors, isSubmitting }, setError } = useForm();
     const navigate = useNavigate();
+    const API_URL = import.meta.env.VITE_API_BASE_URL || '';
     const [apiError, setApiError] = useState(null);
 
     const onSubmit = async (data) => {
@@ -25,10 +26,10 @@ export default function Login() {
         catch (error) {
             console.error("Login failed: ", error);
             // Set a general API error message to display in the UI
-            const message = error.response?.data?.message || "Login failed. Please check your credentials and try again.";
+            const message = error.response?.data?.error || "Login failed. Please check your credentials and try again.";
             setApiError(message);
             // Optionally, you can also set a specific field error using react-hook-form's setError
-            if (message.toLowerCase().includes('email')) {
+            if (message?.toLowerCase().includes('email')) {
                 setError('email', { type: 'server', message });
             }
         }

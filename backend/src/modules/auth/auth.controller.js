@@ -88,7 +88,9 @@ export const login = async (req, res) => {
         // Attaching the token to an HTTP-only cookie
         res.cookie("token", token, {
             httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
+            secure: process.env.NODE_ENV === "production", // In production, cookie is sent over HTTPS only.
+            // For cross-site cookie to be sent, sameSite must be 'none' and secure must be 'true'.
+            // In development, sameSite can be 'lax' and secure can be 'false'.
             sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
             maxAge: 24 * 60 * 60 * 1000 // 1 day in ms
         })

@@ -27,6 +27,8 @@ const SubmissionsList = ({ problemId, type }) => {
   // State for our Pop-Up Modal
   const [selectedSubmission, setSelectedSubmission] = useState(null);
 
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+
   const { data: submissions = [], isLoading, error } = useQuery({
     queryKey: ['submissions', problemId, type],
     queryFn: async () => {

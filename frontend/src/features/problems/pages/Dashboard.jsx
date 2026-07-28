@@ -60,7 +60,7 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-200">
-                {problems?.map((problem) => (
+                {problems?.map((problem) => ( // Using optional chaining here is a good safeguard
                   <tr key={problem.problemId} className="hover:bg-gray-50 transition-colors">
                     
                     {/* Status Column (Placeholder for V1) */}
@@ -93,7 +93,7 @@ const Dashboard = () => {
                 ))}
                 
                 {/* Empty State */}
-                {problems.length === 0 && (
+                {problems?.length === 0 && (
                   <tr>
                     <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
                       No problems found. Start by adding some in your database!

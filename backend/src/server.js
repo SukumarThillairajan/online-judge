@@ -55,7 +55,6 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'Accept']
 }));
 
-
 // Router Mounting
 app.use("/api/auth", authRoutes); // any request starting with /api/auth will be handed off to authRoutes
 app.use("/api/problems", problemRoutes);

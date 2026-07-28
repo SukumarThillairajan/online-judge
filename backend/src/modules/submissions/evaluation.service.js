@@ -1,6 +1,6 @@
 import path from 'path';
 import fs from 'fs/promises';
-import crypto from 'crypto';
+import { randomUUID } from 'crypto';
 
 import {languageConfigs, compileCode, runCode} from "../../workers/dockerEngine.js";
 
@@ -13,7 +13,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
     }
 
     // Creating a temporary directory for this specific submission
-    const tempDirName = crypto.randomUUID();
+    const tempDirName = randomUUID();
 
     // 1. The path the Node.js Worker uses to write the files (inside its own container)
     const workerDirPath = path.join('/app/temp', tempDirName);
@@ -36,7 +36,7 @@ export const evaluateSubmission = async (code, language, testCases) => {
         }
 
         // 2. Execution Step
-        for (const [index, testCase] of testCases.entries()) {
+        for (const testCase of testCases) {
             const result = await runCode(workerDirPath, hostDirPath, language, testCase.input);
 
             if (!result.success) {
@@ -91,8 +91,8 @@ export const runCustomCode = async (code, language, customInput) => {
     }
 
     // Creating a temporary directory to run this code without submitting it.
-    const tempDirName = crypto.randomUUID();
-    
+    const tempDirName = randomUUID();
+
     // 1. The path the Node.js Worker uses to write the files (inside its own container)
     const workerDirPath = path.join('/app/temp', tempDirName);
     // 2. The path the EC2 Host uses to mount into the compiler/runner container

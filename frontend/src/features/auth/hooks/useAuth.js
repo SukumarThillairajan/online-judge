@@ -1,6 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../api/apiClient';
 
+// Grab the Vercel Production URL or fallback to Vite Proxy (local)
+const API_URL = import.meta.env.VITE_API_BASE_URL || '';
+
 export const useAuth = () => {
     return useQuery({
         queryKey: ['authUser'],

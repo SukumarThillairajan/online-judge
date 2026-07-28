@@ -38,7 +38,7 @@ const SubmissionsPage = () => {
             ← Back to Dashboard
           </Link>
           <span className="text-gray-600">|</span>
-          <span className="text-white font-bold text-lg">{problem?.problem_name || problem?.title || 'Loading...'}</span>
+          <span className="text-white font-bold text-lg">{problem?.problemName || problem?.problem_name || problem?.title || 'Loading...'}</span>
         </div>
       </nav>
 

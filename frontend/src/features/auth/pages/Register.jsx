@@ -12,6 +12,7 @@ const Register = () => {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  const API_URL = import.meta.env.VITE_API_BASE_URL || '';
 
   const handleChange = (e) => {
     setFormData({

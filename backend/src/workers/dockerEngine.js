@@ -59,7 +59,8 @@ export const compileCode = async(hostDirPath, language) => {
     }
 
     const fullCompileCommand = `${config.compileCommand} ${config.compileArgs.join(" ")}`;
-    const compileDockerCommand = `docker run --rm -v "${hostDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullCompileCommand}"`; 
+    const compileDockerCommand = `docker run --rm -v "${hostDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullCompileCommand}"`;
+
     try {
         await execPromise(compileDockerCommand, {timeout: 10000}); // max 10s for compilation
         return {success: true};
@@ -78,6 +79,7 @@ export const runCode = async(workerDirPath, hostDirPath, language, inputData) =>
     const config = languageConfigs[language];
 
     // Writing the test case input into a file
+    // Node.js writes the file using the path inside its own container (workerDirPath)
     const inputFilePath = path.join(workerDirPath, "input.txt");
     await fs.writeFile(inputFilePath, inputData || "");
 

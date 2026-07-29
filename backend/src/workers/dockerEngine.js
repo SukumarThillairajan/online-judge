@@ -21,6 +21,9 @@ const MEMORY_LIMIT = "256m";
 // and Docker surfaces that to the CLI as exit code 128 + 9 = 137.
 const OOM_EXIT_CODE = 137;
 
+// The wall-clock ceiling for a single test case execution.
+const TIME_LIMIT_MS = 3000;
+
 export const languageConfigs = {
     c: {
         fileName: "main.c",
@@ -102,7 +105,7 @@ export const runCode = async(workerDirPath, hostDirPath, language, inputData) =>
     const runDockerCommand = `docker run --rm --network none --memory ${MEMORY_LIMIT} --memory-swap ${MEMORY_LIMIT} -v "${hostDirPath}:/app" -w /app ${config.dockerImage} sh -c "${fullRunCommand} < /app/input.txt"`;
 
     try {
-        const {stdout, stderr} = await execPromise(runDockerCommand, { timeout: 3000 }); // 3-second timeout
+        const {stdout, stderr} = await execPromise(runDockerCommand, { timeout: TIME_LIMIT_MS });
         return {
             success: true,
             output: stdout.trim()
@@ -116,6 +119,7 @@ export const runCode = async(workerDirPath, hostDirPath, language, inputData) =>
             return {
                 success: false,
                 error: "Time Limit Exceeded",
+                details: `The process did not finish within the ${TIME_LIMIT_MS / 1000}-second time limit and was terminated.`
             };
         }
 

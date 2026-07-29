@@ -2,6 +2,34 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../../../api/apiClient.js';
 
+/**
+ * Renders the 'errorDetails' blob for display WITHOUT leaking hidden test case data.
+ *
+ * A Wrong Answer submission stores the failing input, the expected output and the user's
+ * actual output. Those exist so the AI interviewer can nudge the candidate towards the edge
+ * case they missed -- dumping them into the Submissions modal would expose the problem's
+ * hidden test cases to every user, including on the "All Submissions" feed.
+ *
+ * Only the compiler/runtime trace is safe to surface directly.
+ *
+ * @param {Object|string|null} errorDetails - The value from submissions.error_details.
+ * @returns {string|null} Text safe to render, or null when there is nothing to show.
+ */
+const formatErrorDetails = (errorDetails) => {
+  if (!errorDetails) return null;
+
+  // Legacy rows written before the column was normalised may hold a bare string.
+  if (typeof errorDetails !== 'object') return String(errorDetails);
+
+  // The trace (g++ stderr, crash output, system error message) is safe to display.
+  if (errorDetails.details) return errorDetails.details;
+
+  // Otherwise acknowledge the failure without revealing which values caused it.
+  if (errorDetails.failedAtTestCase) return 'Failed on a hidden test case.';
+
+  return null;
+};
+
 // A tiny, reusable button component that handles its own "Copied!" state
 const CopyButton = ({ textToCopy }) => {
   const [copied, setCopied] = useState(false);
@@ -136,11 +164,9 @@ const SubmissionsList = ({ problemId, type }) => {
                 selectedSubmission.verdict === 'Accepted' ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'
               }`}>
                 <h4 className="font-bold text-lg mb-1">{selectedSubmission.verdict}</h4>
-                {selectedSubmission.errorDetails && (
+                {formatErrorDetails(selectedSubmission.errorDetails) && (
                   <pre className="mt-2 text-sm whitespace-pre-wrap font-mono overflow-x-auto">
-                    {typeof selectedSubmission.errorDetails === 'object' 
-                      ? JSON.stringify(selectedSubmission.errorDetails, null, 2) 
-                      : selectedSubmission.errorDetails}
+                    {formatErrorDetails(selectedSubmission.errorDetails)}
                   </pre>
                 )}
               </div>

@@ -225,6 +225,11 @@ const Arena = () => {
         return null;
       });
 
+      // The /submit pipeline persists everything into the 'errorDetails' JSONB column, so the
+      // trace lives at errorDetails.details -- NOT at the top level like the /run pipeline,
+      // which returns its result straight from the Redis cache.
+      const errDetails = finalResult.errorDetails || {};
+
       // Step C: Display accurate Terminal UI based on evaluation.service.js response
       let terminalMessage = "";
       if (finalResult.verdict === 'Accepted') {
@@ -232,13 +237,16 @@ const Arena = () => {
       }
       else if (finalResult.verdict === 'Compilation Error' || finalResult.verdict === 'Runtime Error') {
         // Show the actual trace (e.g. g++ missing semicolon) in the terminal
-        terminalMessage = finalResult.details || "Execution failed due to a system/syntax error.";
+        terminalMessage = errDetails.details || "Execution failed due to a system/syntax error.";
       }
       else if (finalResult.verdict === 'Wrong Answer') {
-        terminalMessage = `Wrong Answer`;
+        // Deliberately vague. Revealing the failing input or the expected output here would
+        // expose the hidden test cases and rob the AI interviewer of the chance to nudge the
+        // candidate towards the edge case themselves. The real values go to the ghost prompt below.
+        terminalMessage = 'Your output did not match the expected output on a hidden test case.';
       }
       else {
-        terminalMessage = finalResult.details || `Execution failed with verdict: ${finalResult.verdict}`;
+        terminalMessage = errDetails.details || `Execution failed with verdict: ${finalResult.verdict}`;
       }
 
       setVerdict({ status: finalResult.verdict, message: terminalMessage });
@@ -252,20 +260,19 @@ const Arena = () => {
           Do NOT end the interview.`;
       }
       else if (finalResult.verdict === 'Wrong Answer') {
-        // Map safely to the exact errorDetails object returned by evaluation.service.js
-        const errDetails = finalResult.errorDetails || {};
-
-        ghostPrompt = `SYSTEM OBSERVATION: The user submitted their code, but it failed on a hidden test case. 
-          Input: ${errDetails.input || 'Hidden'}, 
-          Expected Output: ${errDetails.expected || 'Hidden'}, 
-          User's Output: ${errDetails.actualOutput || 'Hidden'}. 
-          Nudge them gently towards the edge case they missed based on this input. 
+        // Keys must match exactly what evaluation.service.js writes into errorDetails:
+        // failedAtTestCase, input, expectedOutput, actualOutput.
+        ghostPrompt = `SYSTEM OBSERVATION: The user submitted their code, but it failed on a hidden test case.
+          Input: ${errDetails.input || 'Hidden'},
+          Expected Output: ${errDetails.expectedOutput || 'Hidden'},
+          User's Output: ${errDetails.actualOutput || 'Hidden'}.
+          Nudge them gently towards the edge case they missed based on this input.
           Do NOT give them the direct answer.`;
       }
       else {
         // Send Compilation/Runtime trace to AI
-        ghostPrompt = `SYSTEM OBSERVATION: The user's code resulted in a ${finalResult.verdict}. 
-          The compiler/system outputted this error: \n${finalResult.details || 'Unknown Error'}\n
+        ghostPrompt = `SYSTEM OBSERVATION: The user's code resulted in a ${finalResult.verdict}.
+          The compiler/system outputted this error: \n${errDetails.details || 'Unknown Error'}\n
           Point out the syntax, memory, or runtime error in their current code conceptually without writing the full solution for them.`;
       }
 

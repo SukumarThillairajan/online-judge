@@ -44,6 +44,7 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
 - **Sanitizer-backed verdicts.** C and C++ compile with AddressSanitizer and UndefinedBehaviorSanitizer in non-recovering mode, so out-of-bounds access and integer overflow surface as runtime errors instead of silently wrong answers. Interpreted languages promote warnings to errors.
 - **Asynchronous evaluation** through a BullMQ queue with bounded concurrency, exponential-backoff retries, stalled-job recovery, and a rollback path if enqueueing fails after the row is written.
 - **Run vs. Submit.** *Run* executes against your own stdin and caches the result in Redis without touching the database. *Submit* evaluates against hidden test cases and persists a verdict.
+- **In-editor error-line highlighting.** A `Compilation Error` verdict (from either Run or Submit) is parsed against a per-language pattern to locate the offending line, which Monaco then highlights with a red background and gutter marker and scrolls into view. The highlight clears itself the moment you edit the code or the next run succeeds.
 
 ### Scoring
 

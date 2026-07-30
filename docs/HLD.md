@@ -294,7 +294,7 @@ The final write is wrapped in a single database transaction: the submission rece
 
 * **Page 1: Authentication Space** (`/login`, `/register`) — React Hook Form validation, JWT cookie set on success.  
 * **Page 2: Dashboard** (`/dashboard`) — the problem list, each row annotated with the user's **best gamified rank** for that problem, served by the window-function CTE behind `/api/problems/user-status`.  
-* **Page 3: Coding Arena** (`/problems/:id`) — a split layout: Monaco editor, language selector, custom-input panel and terminal on one side; the AI chat interface and the live countdown on the other. *Run Code* and *Submit Code* remain, now wired into the ghost-prompt pipeline.  
+* **Page 3: Coding Arena** (`/problems/:id`) — a split layout: Monaco editor, language selector, custom-input panel and terminal on one side; the AI chat interface and the live countdown on the other. *Run Code* and *Submit Code* remain, now wired into the ghost-prompt pipeline and into an in-editor error-line highlight for compilation failures (§6.6).  
 * **Page 4: Submissions & Leaderboard** (`/problems/:id/submissions`) — two tabs: My Submissions and the rank-ordered Leaderboard.
 
 All application routes sit behind a `ProtectedRoute` wrapper that resolves `GET /api/auth/verify` through TanStack Query (`retry: false`, 5-minute `staleTime`), so an expired cookie redirects to login instead of rendering a broken shell.
@@ -316,6 +316,15 @@ Attempting to leave an active interview raises a modal offering three explicit c
 * Both *Run* and *Submit* poll their respective status endpoints once per second, up to 20 attempts, through a shared `poll` helper.  
 * Polling is scoped to the Arena component; navigating away unmounts it and clears every interval and idle timer, so no orphaned requests survive the route change.  
 * Finished verdicts remain viewable through the Submissions and Leaderboard tabs.
+
+### **6.6 Compile-Error Line Highlighting**
+
+When a Run or Submit resolves to a **Compilation Error** verdict, the frontend does more than print the raw trace in the terminal panel — it locates the offending line inside the Monaco editor and highlights it directly:
+
+* **Per-language extraction.** Each compiler/interpreter emits its own trace format, so a small per-language regex table pulls the 1-based line number out of the raw trace: gcc/g++ (`file:line:col: error:`), javac (`file:line: error:`), and CPython (`File "file", line N`). gcc/g++ and javac prefix the actual error line with a leading context line (e.g. `main.cpp: In function 'int main()':`), so the extraction regex runs with the multiline flag — `^` must anchor to the start of *any* line in the trace, not just the string's absolute start, or the real error line is never reached.  
+* **Scoped to compile-time errors only.** Runtime crashes, Time Limit Exceeded, and Memory Limit Exceeded traces are not parsed for a line number — unlike a syntax error, they don't reliably resolve to one originating line — so the highlight is intentionally gated to the `Compilation Error` verdict on both the Run and Submit pipelines.  
+* **Monaco decorations.** The resolved line number drives a `deltaDecorations` call: a translucent red background across the whole line plus a red dot in the gutter, and `revealLineInCenter` scrolls the editor to bring the line into view automatically.  
+* **Self-clearing.** The highlight is cleared the instant the candidate edits any line, or the next Run/Submit returns a non-compile-error result, so a stale highlight never survives past the code that caused it.
 
 ## **7\. Authentication & Authorization**
 

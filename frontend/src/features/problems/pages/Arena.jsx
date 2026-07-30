@@ -9,6 +9,36 @@ import InterviewTimer from '../components/InterviewTimer.jsx';
 import EvaluationModal from '../components/EvaluationModal.jsx';
 import LeaveWarningModal from '../components/LeaveWarningModal.jsx';
 
+// Extracts the 1-based line number from a compiler/interpreter error trace so the
+// editor can highlight it. Line numbers sit in different capture groups per language
+// because c/cpp/java/javascript traces lead with the filename before the line number.
+const extractErrorLine = (errorDetails, language) => {
+  if (!errorDetails) return null;
+
+  let match;
+  switch (language) {
+    case 'c':
+    case 'cpp':
+      // Example: "main.cpp:10:5: error: expected ';' before 'return'"
+      match = errorDetails.match(/^(.*):(\d+):(\d+):\s+error:/);
+      return match ? parseInt(match[2], 10) : null;
+    case 'java':
+      // Example: "Main.java:15: error: ';' expected"
+      match = errorDetails.match(/^(.*):(\d+):\s+error:/);
+      return match ? parseInt(match[2], 10) : null;
+    case 'python':
+      // Example: "File \"solution.py\", line 8"
+      match = errorDetails.match(/File ".*", line (\d+)/);
+      return match ? parseInt(match[1], 10) : null;
+    case 'javascript':
+      // Example: "solution.js:12:5"
+      match = errorDetails.match(/^(.*):(\d+):(\d+)/);
+      return match ? parseInt(match[2], 10) : null;
+    default:
+      return null;
+  }
+};
+
 const Arena = () => {
   const { id: problemId } = useParams();
 
@@ -25,6 +55,8 @@ const Arena = () => {
   const [customInput, setCustomInput] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [verdict, setVerdict] = useState(null);
+  const [errorLine, setErrorLine] = useState(null);
+
   // --- Interview Ending States ---
   const [showEvaluationModal, setShowEvaluationModal] = useState(false);
 
@@ -102,6 +134,7 @@ const Arena = () => {
     // This effect now re-runs on code changes OR chat messages (via lastActivityTime)
   }, [code, isInterviewActive, lastActivityTime]);
 
+  // --- Helper or Utility Functions ---
   // Polling Helper Function
   const poll = (fn, retries = 20, interval = 1000) => {
     return new Promise((resolve, reject) => {
@@ -142,7 +175,10 @@ const Arena = () => {
         const statusRes = await apiClient.get(`/api/submissions/run/${jobId}/status`);
         const currentStatus = statusRes.data.status || statusRes.data.data?.status;
 
-        if (currentStatus !== 'Pending' && !currentStatus.includes('ing')) {
+        // Error results (compile/runtime failures) carry no 'status' field at all --
+        // only 'error'/'details' -- so currentStatus is undefined once they land in
+        // Redis. That's a terminal state, not a pending one, so treat it as done.
+        if (currentStatus !== 'Pending' && !currentStatus?.includes('ing')) {
           return statusRes.data.data || statusRes.data;
         }
         return null;
@@ -150,6 +186,7 @@ const Arena = () => {
 
       // Update the Terminal UI and conditionally send a ghost prompt
       if (finalResult.status === 'Success' || finalResult.output) {
+        setErrorLine(null); // Clear any previous highlight on a successful run
         setVerdict({ status: 'Success', message: finalResult.output || 'Execution successful.' });
 
         // --- HYBRID ARCHITECTURE: GHOST PROMPT FOR POTENTIAL WRONG ANSWERS ON CUSTOM RUNS ---
@@ -172,6 +209,9 @@ const Arena = () => {
         }
       } else {
         const errorMessage = finalResult.details || finalResult.output || 'Execution failed.';
+        // Only compile-time traces have a reliable single originating line; runtime
+        // crashes, TLE, and MLE don't map cleanly onto one line, so leave those unhighlighted.
+        setErrorLine(finalResult.error === 'Compilation Error' ? extractErrorLine(errorMessage, language) : null);
         setVerdict({ status: finalResult.error || 'Error', message: errorMessage });
 
         // --- HYBRID ARCHITECTURE: THE GHOST PROMPT FOR RUN FAILURES ---
@@ -219,7 +259,7 @@ const Arena = () => {
         const statusRes = await apiClient.get(`/api/submissions/${submissionId}/status`);
         const currentVerdict = statusRes.data.verdict || statusRes.data.data?.verdict;
 
-        if (currentVerdict !== 'Pending' && !currentVerdict.includes('ing')) {
+        if (currentVerdict !== 'Pending' && !currentVerdict?.includes('ing')) {
           return statusRes.data.data || statusRes.data;
         }
         return null;
@@ -248,6 +288,9 @@ const Arena = () => {
       else {
         terminalMessage = errDetails.details || `Execution failed with verdict: ${finalResult.verdict}`;
       }
+
+      // Same rule as the Run flow: only compile-time errors reliably map to a single line.
+      setErrorLine(finalResult.verdict === 'Compilation Error' ? extractErrorLine(errDetails.details, language) : null);
 
       setVerdict({ status: finalResult.verdict, message: terminalMessage });
 
@@ -406,7 +449,9 @@ const Arena = () => {
               setCode={(newCode) => {
                 setCode(newCode);
                 handleUserActivity(); // Signal activity on code change
+                if (errorLine) setErrorLine(null); // Clear the highlight once they start editing
               }}
+              errorLine={errorLine}
               onRun={handleRun}
               onSubmit={handleSubmit}
               isEvaluating={isEvaluating}

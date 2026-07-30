@@ -1,1 +1,14 @@
 @import 'tailwindcss';
+
+/* Highlights the entire background of the line */
+.error-line-highlight {
+    background-color: rgba(255, 0, 0, 0.3) !important;
+}
+
+/* Optional: Adds a red block/dot in the margin next to the line number */
+.error-glyph-margin {
+    background-color: #ff3333 !important;
+    width: 8px !important;
+    border-radius: 50%;
+    margin-left: 5px;
+}

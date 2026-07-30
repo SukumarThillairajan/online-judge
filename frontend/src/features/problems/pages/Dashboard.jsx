@@ -39,6 +39,7 @@ const Dashboard = () => {
         
         {/* Header Section */}
         <div className="mb-8">
+          <span className="text-sm font-bold text-blue-600 tracking-wide uppercase">Ascend</span>
           <h1 className="text-3xl font-extrabold text-gray-900">Coding Arena</h1>
           <p className="mt-2 text-sm text-gray-600">Select a problem below to begin your evaluation.</p>
         </div>

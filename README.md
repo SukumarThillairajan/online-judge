@@ -1,4 +1,4 @@
-# Online Judge - AI Mock Interviewer
+# Ascend: The Next Generation Interviewer
 
 An online judge that does not just grade your code. It interviews you.
 

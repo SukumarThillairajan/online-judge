@@ -1,4 +1,4 @@
-# **Online Judge V2: High-Level Design (HLD)**
+# **Ascend: The Next Generation Interviewer — High-Level Design (HLD)**
 
 *Version 2.0 — AI Interviewer Integration. This document supersedes the V1 HLD and describes the system as it is currently deployed.*
 

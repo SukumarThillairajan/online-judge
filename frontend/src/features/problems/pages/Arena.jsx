@@ -19,12 +19,15 @@ const extractErrorLine = (errorDetails, language) => {
   switch (language) {
     case 'c':
     case 'cpp':
+      // gcc/g++ prefix the real "file:line:col: error:" line with a context line
+      // like "main.cpp: In function 'int main()':", so '^' needs the 'm' flag to
+      // match at the start of that later line rather than only the string start.
       // Example: "main.cpp:10:5: error: expected ';' before 'return'"
-      match = errorDetails.match(/^(.*):(\d+):(\d+):\s+error:/);
+      match = errorDetails.match(/^(.*):(\d+):(\d+):\s+error:/m);
       return match ? parseInt(match[2], 10) : null;
     case 'java':
       // Example: "Main.java:15: error: ';' expected"
-      match = errorDetails.match(/^(.*):(\d+):\s+error:/);
+      match = errorDetails.match(/^(.*):(\d+):\s+error:/m);
       return match ? parseInt(match[2], 10) : null;
     case 'python':
       // Example: "File \"solution.py\", line 8"
@@ -32,7 +35,7 @@ const extractErrorLine = (errorDetails, language) => {
       return match ? parseInt(match[1], 10) : null;
     case 'javascript':
       // Example: "solution.js:12:5"
-      match = errorDetails.match(/^(.*):(\d+):(\d+)/);
+      match = errorDetails.match(/^(.*):(\d+):(\d+)/m);
       return match ? parseInt(match[2], 10) : null;
     default:
       return null;
@@ -403,7 +406,9 @@ const Arena = () => {
             ← Go back to dashboard
           </button>
           <span className="text-gray-500">|</span>
-          <span className="text-white font-bold tracking-wide">Mock Interview Mode</span>
+          <span className="text-white font-bold tracking-wide">
+            <span className="text-blue-400">Ascend</span> — Mock Interview Mode
+          </span>
         </div>
 
         <div className="flex items-center space-x-3">

@@ -55,7 +55,13 @@ const Register = () => {
       <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg border border-gray-100">
         
         <div>
-          <h2 className="mt-2 text-center text-3xl font-extrabold text-gray-900">
+          <h1 className="text-center text-3xl font-extrabold text-gray-900 tracking-tight">
+            Ascend
+          </h1>
+          <p className="mt-1 text-center text-sm font-medium text-blue-600 tracking-wide uppercase">
+            The Next Generation Interviewer
+          </p>
+          <h2 className="mt-4 text-center text-2xl font-bold text-gray-900">
             Create your Account
           </h2>
         </div>

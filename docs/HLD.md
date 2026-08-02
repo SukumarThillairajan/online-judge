@@ -4,8 +4,13 @@
 
 ## **0\. High-Level Architecture Diagram**
 
-***\[Architecture Diagram Pending\]***   
-*A high-level system architecture diagram illustrating the data flow between the React Frontend, the Node.js/Express Backend, the PostgreSQL Database, the Redis/BullMQ queue, the Docker Execution Pipeline, and the Gemini AI Interview Engine is currently being drafted and will be inserted here shortly.* 
+![Ascend — end-to-end system architecture.](architecture.png)
+
+The diagram reads top to bottom as a request flows through the system. The **React client** on Vercel reaches the **Express API** over credentialed HTTPS, except for the interview conversation, which is a POST that stays open as a Server-Sent Events stream (the orange path). Anything that executes code is never run inline: `/api/submissions` and `/api/interviews` both write to **Redis**, which serves simultaneously as the BullMQ queue, the live interview transcript store, and the run-result cache. The **worker** dequeues and drives the **ephemeral Docker sandboxes** through the host's Docker socket — the red path, and the only place in the system where untrusted code executes.
+
+Two boundaries are worth reading carefully. Everything inside the **AWS EC2** box is a `docker-compose` service on a single instance, including Redis — only PostgreSQL and Gemini are genuinely external. And the sandbox is the sole component reached via `/var/run/docker.sock`; the API container has no access to the Docker daemon at all.
+
+*Source: `architecture.dot` (Graphviz). Regenerate with `dot -Tpng -Gdpi=200 architecture.dot -o architecture.png`.*
 
 ## **1\. Tech Stack**
 

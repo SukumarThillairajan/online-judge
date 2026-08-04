@@ -52,6 +52,8 @@ const Arena = () => {
   const [isInterviewActive, setIsInterviewActive] = useState(false);
   const chatBoxRef = useRef(null); // Ref to shoot Ghost Prompts into the Chatbox
   const idleTimerRef = useRef(null); // Ref to store the inactivity timer
+  const codeSaveTimerRef = useRef(null); // Ref to store the debounced code-autosave timer
+  const sessionInitStartedRef = useRef(false); // Guards against StrictMode's double-invoke of the init effect in dev
   const [lastActivityTime, setLastActivityTime] = useState(() => Date.now()); // New state to track any user activity
 
   // --- Editor & Execution State ---
@@ -102,12 +104,25 @@ const Arena = () => {
         setSessionId(payload.sessionId);
         setSessionStartedAt(payload.startedAt || new Date().toISOString());
         setInitialChatHistory(Array.isArray(payload.chatHistory) ? payload.chatHistory : []);
+        // Restore the candidate's last autosaved editor contents on resume, so a reload
+        // brings back their code, not just the chat transcript.
+        if (payload.code) {
+          setCode(payload.code);
+          if (payload.language) {
+            setLanguage(payload.language);
+          }
+        }
         setIsInterviewActive(true);
       } catch (err) {
         console.error("Failed to start interview session", err);
       }
     };
-    if (problemId && !sessionId) {
+    // sessionInitStartedRef guards against React StrictMode's dev-only double-invoke of
+    // this effect: without it, both synchronous invocations would see sessionId as null
+    // and race two /start calls, creating two separate interview_sessions rows and
+    // leaving resume pointed at whichever one didn't actually get used.
+    if (problemId && !sessionId && !sessionInitStartedRef.current) {
+      sessionInitStartedRef.current = true;
       initializeSession();
     }
   }, [problemId, sessionId]);
@@ -116,6 +131,25 @@ const Arena = () => {
   const handleUserActivity = () => {
     setLastActivityTime(Date.now());
   };
+
+  // Editor Autosave: debounce writes of the live code + language to the backend so a
+  // reload (or the /start resume path) can restore exactly what the candidate was typing,
+  // not just the chat transcript. Debounced rather than saved on every keystroke to avoid
+  // hammering the API while the candidate is actively typing.
+  useEffect(() => {
+    if (!isInterviewActive || !sessionId) return;
+
+    if (codeSaveTimerRef.current) {
+      clearTimeout(codeSaveTimerRef.current);
+    }
+
+    codeSaveTimerRef.current = setTimeout(() => {
+      apiClient.post('/api/interviews/code', { sessionId, problemId, code, language })
+        .catch((err) => console.error("Failed to autosave editor state", err));
+    }, 2000); // 2 seconds after the candidate stops typing or changes language
+
+    return () => clearTimeout(codeSaveTimerRef.current);
+  }, [code, language, isInterviewActive, sessionId, problemId]);
 
   // Inactivity Ghost Prompt: If the user hasn't typed for 5 minutes, check in.
   useEffect(() => {
@@ -412,7 +446,7 @@ const Arena = () => {
           </button>
           <span className="text-gray-500">|</span>
           <span className="text-white font-bold tracking-wide">
-            <span className="text-blue-400">Ascend</span> — Mock Interview Mode
+            <span className="text-blue-400">Ascend</span>: Mock Interview Mode
           </span>
         </div>
 

@@ -4,7 +4,7 @@ import { db } from "../../database/db_connector.js";
 import { problems, submissions, interviewSessions } from "../../database/schema.js";
 import { submissionQueue } from '../../queues/submissionQueue.js';
 
-import { appendChatMessage, getChatHistory, clearChatHistory } from "./cache.service.js";
+import { appendChatMessage, getChatHistory, clearChatHistory, getEditorState, saveEditorState, clearEditorState } from "./cache.service.js";
 import { getInterviewerStream } from "./llm.service.js";
 import { evaluateInterview, calculateGamifiedRank } from "./grading.service.js";
 
@@ -45,11 +45,15 @@ export const startInterview = async (req, res) => {
 
         if (existingSession && !isStale) {
             const chatHistory = await getChatHistory(existingSession.sessionId);
+            // The editor's contents are autosaved separately from the chat transcript, so a reload restores the candidate's code, not just the chat.
+            const editorState = await getEditorState(existingSession.sessionId);
             return res.status(200).json({
                 success: true,
                 sessionId: existingSession.sessionId,
                 startedAt: existingSession.startedAt,
                 chatHistory,
+                code: editorState?.code ?? null,
+                language: editorState?.language ?? null,
                 message: "Resumed existing interview session."
             });
         }
@@ -78,6 +82,8 @@ export const startInterview = async (req, res) => {
             sessionId: sessionId,
             startedAt: newSession.startedAt,
             chatHistory: [],
+            code: null,
+            language: null,
             message: "Interview session started successfully."
         });
     }
@@ -175,6 +181,40 @@ export const streamInterviewChat = async (req, res) => {
         if (!res.writableEnded) {
             res.end();
         }
+    }
+};
+
+/**
+ * Autosaves the candidate's live editor contents (code + language) so that a page reload
+ * or dropped connection can restore exactly what they were working on, not just the chat
+ * transcript. Called by the frontend on a debounce, not on every keystroke.
+ */
+export const saveCode = async (req, res) => {
+    try {
+        const userId = req.user.userId;
+        const { sessionId, problemId, code, language } = req.body;
+        if (!sessionId || !problemId || typeof code !== "string" || !language) {
+            return res.status(400).json({ error: "Missing required fields: sessionId, problemId, code, or language." });
+        }
+
+        const session = await db.query.interviewSessions.findFirst({
+            where: and(
+                eq(interviewSessions.sessionId, sessionId),
+                eq(interviewSessions.userId, userId),
+                eq(interviewSessions.problemId, problemId)
+            )
+        });
+        if (!session) {
+            return res.status(404).json({ error: "Interview session not found." });
+        }
+
+        await saveEditorState(sessionId, code, language);
+
+        return res.status(200).json({ success: true });
+    }
+    catch (error) {
+        console.error("Error in saveCode in Interview Controller:", error);
+        return res.status(500).json({ error: "An internal server error occurred while saving the editor state." });
     }
 };
 
@@ -306,6 +346,7 @@ export const finishInterviewAndGrade = async (req, res) => {
 
         // Cleaning up the Redis cache
         await clearChatHistory(sessionId);
+        await clearEditorState(sessionId);
 
         return res.status(200).json({
             success: true,

@@ -24,13 +24,13 @@ digraph Ascend {
       auth [label=<<b>/api/auth</b><br/><font point-size="8">JWT · bcrypt · RBAC</font>>, fillcolor="#ffe8c6", color="#d9a44c"];
       prob [label=<<b>/api/problems</b><br/><font point-size="8">best-rank CTE</font>>, fillcolor="#ffe8c6", color="#d9a44c"];
       subm [label=<<b>/api/submissions</b><br/><font point-size="8">run · submit · status</font>>, fillcolor="#ffe8c6", color="#d9a44c"];
-      intv [label=<<b>/api/interviews</b><br/><font point-size="8">start · chat · finish<br/>6 req/min/IP</font>>, fillcolor="#ffe8c6", color="#d9a44c"];
+      intv [label=<<b>/api/interviews</b><br/><font point-size="8">start · chat · code · finish<br/>6 req/min/IP (chat/finish only)</font>>, fillcolor="#ffe8c6", color="#d9a44c"];
       {rank=same; auth; prob;}
       {rank=same; subm; intv;}
       auth -> subm [style=invis]; prob -> intv [style=invis];
     }
 
-    redis [label=<<b>redis</b>  ·  <font point-size="9">compose service</font><br/><font point-size="8.5">BullMQ queue · interview:chat 2 h TTL</font><br/><font point-size="8.5">run-code results 300 s TTL</font>>, fillcolor="#d6efdd", color="#5aab70"];
+    redis [label=<<b>redis</b>  ·  <font point-size="9">compose service</font><br/><font point-size="8.5">BullMQ queue · interview:chat/code 2 h TTL</font><br/><font point-size="8.5">run-code results 300 s TTL</font>>, fillcolor="#d6efdd", color="#5aab70"];
     wrk   [label=<<b>worker</b>  ·  BullMQ consumer<br/><font point-size="8.5">concurrency 5 · 3 retries · stall recovery</font><br/><font point-size="8.5">evaluate-code · run-code</font>>, fillcolor="#ffe8c6", color="#d9a44c"];
     sbx   [label=<<b>Ephemeral Docker Sandbox</b><br/><font point-size="8.5">one container per compile / per test case</font><br/><font point-size="8.5"><b>--rm --network none --memory 256m</b></font><br/><font point-size="8.5">gcc-alpine · corretto:21 · python:3.11 · node:20</font><br/><font point-size="8.5">3 s → SIGTERM = TLE  ·  exit 137 = MLE</font>>, fillcolor="#ffdcdc", color="#d06a6a"];
   }

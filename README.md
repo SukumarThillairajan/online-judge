@@ -40,6 +40,7 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
 - **Token-by-token streaming** over Server-Sent Events, so replies appear as they are generated.
 - **Text-based, not voice.** The entire interview — your explanations, the interviewer's questions and follow-ups — happens through typed chat. There is no speech-to-text or text-to-speech in this version, so it does not yet test verbal communication the way a live phone screen does.
 - **Resumable, server-timed sessions.** The 45-minute countdown is anchored to a server-recorded start time, not a local counter — a page reload or dropped connection resumes the same session, transcript and remaining time intact, instead of resetting to a fresh interview.
+- **Your code survives a reload too.** The editor's contents and selected language are autosaved to Redis on a debounce, independently of chat activity, and restored on resume alongside the transcript and timer — so a refresh never costs you your in-progress solution.
 - **Explicit exits.** Navigating away from a live interview raises a three-way guard: stay, leave ungraded, or end and grade. Nothing about the session is kept in browser storage — the transcript lives in Redis and the session row in Postgres.
 
 ### The Judge
@@ -306,8 +307,9 @@ All routes require the JWT cookie except `POST /api/auth/register`, `POST /api/a
 
 | Method | Endpoint | Description |
 | :---- | :---- | :---- |
-| `POST` | `/api/interviews/start` | Resume an existing unfinished session for this user + problem if one exists (returns its `sessionId`, `startedAt`, and saved transcript); otherwise create a new one. |
+| `POST` | `/api/interviews/start` | Resume an existing unfinished session for this user + problem if one exists (returns its `sessionId`, `startedAt`, saved transcript, and saved editor code & language); otherwise create a new one. Rate limited to 6/min/IP. |
 | `POST` | `/api/interviews/chat` | SSE stream of the interviewer's reply. Rate limited to 6/min/IP. |
+| `POST` | `/api/interviews/code` | Autosave the live editor contents (debounced client-side). Not rate limited. |
 | `POST` | `/api/interviews/finish` | Snapshot, judge, grade, rank, and persist. Rate limited to 6/min/IP. |
 
 ### System

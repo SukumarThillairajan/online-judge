@@ -89,9 +89,83 @@ export const clearChatHistory = async (sessionId) => {
 
     try {
         await redisConnection.del(key);
-    } 
+    }
     catch (error) {
         // This is a non-fatal error for the user, but critical for system health monitoring.
         console.error(`CRITICAL: Failed to clear chat history for session ${sessionId}. This may indicate a Redis connectivity issue.`, error);
     }
 }
+
+/**
+ * Generates a consistent Redis key for an interview session's editor state.
+ * @param {string} sessionId
+ * @returns {string} The Redis key.
+ */
+const generateRedisCodeKey = (sessionId) => `interview:code:${sessionId}`;
+
+/**
+ * Fetches the last autosaved editor state (code + language) from Redis.
+ * @param {string} sessionId - The unique identifier for the interview session.
+ * @returns {Promise<{code: string, language: string}|null>}
+ */
+export const getEditorState = async (sessionId) => {
+    if (!sessionId) {
+        console.error("getEditorState called without a sessionId.");
+        return null;
+    }
+
+    const key = generateRedisCodeKey(sessionId);
+
+    try {
+        const data = await redisConnection.get(key);
+        return data ? JSON.parse(data) : null;
+    }
+    catch (error) {
+        console.error(`Error fetching or parsing editor state for sessionId ${sessionId}:`, error);
+        return null;
+    }
+};
+
+/**
+ * Autosaves the candidate's current editor contents to Redis, so a page reload can
+ * restore exactly what they were typing, not just the chat transcript.
+ * @param {string} sessionId - The unique identifier for the interview session.
+ * @param {string} code - The live contents of the Monaco editor.
+ * @param {string} language - The currently selected language.
+ */
+export const saveEditorState = async (sessionId, code, language) => {
+    if (!sessionId || typeof code !== "string" || !language) {
+        console.error("saveEditorState called with missing parameters.", { sessionId, hasCode: typeof code === "string", language });
+        return;
+    }
+
+    const key = generateRedisCodeKey(sessionId);
+
+    try {
+        await redisConnection.set(key, JSON.stringify({ code, language }), "EX", INTERVIEW_TTL);
+    }
+    catch (error) {
+        console.error(`Error saving editor state for sessionId ${sessionId}:`, error);
+        throw new Error("Failed to save editor state to cache.");
+    }
+};
+
+/**
+ * Deletes the autosaved editor state from Redis for a given session.
+ * @param {string} sessionId - The unique identifier for the interview session.
+ */
+export const clearEditorState = async (sessionId) => {
+    if (!sessionId) {
+        console.warn("clearEditorState called with no sessionId.");
+        return;
+    }
+
+    const key = generateRedisCodeKey(sessionId);
+
+    try {
+        await redisConnection.del(key);
+    }
+    catch (error) {
+        console.error(`CRITICAL: Failed to clear editor state for session ${sessionId}. This may indicate a Redis connectivity issue.`, error);
+    }
+};

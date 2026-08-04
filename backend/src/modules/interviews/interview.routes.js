@@ -1,7 +1,7 @@
 import express from 'express';
 import rateLimit from 'express-rate-limit';
 import {requireAuth} from "../../middlewares/auth.middleware.js";
-import {startInterview, streamInterviewChat, finishInterviewAndGrade} from "./interview.controller.js";
+import {startInterview, streamInterviewChat, finishInterviewAndGrade, saveCode} from "./interview.controller.js";
 
 const router = express.Router();
 
@@ -16,8 +16,11 @@ const interviewLimiter = rateLimit({
     legacyHeaders: false, 
 });
 
-// Route to initialize the interview session (Lightweight, standard auth)
-router.post("/start", requireAuth, startInterview);
+// Route to initialize the interview session
+router.post("/start", requireAuth, interviewLimiter, startInterview);
+
+// Route to autosave the live editor contents (No need to rate limit this, since no AI call is involved; and the frontend already debounces it)
+router.post("/code", requireAuth, saveCode);
 
 // Chatting route using Server-Sent Events (SSE) (Protected by Rate Limiter)
 router.post("/chat", requireAuth, interviewLimiter, streamInterviewChat);

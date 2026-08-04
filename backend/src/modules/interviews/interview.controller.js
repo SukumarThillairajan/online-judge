@@ -1,4 +1,4 @@
-import { eq, desc, and } from 'drizzle-orm';
+import { eq, desc, and, isNull } from 'drizzle-orm';
 import crypto from 'crypto';
 import { db } from "../../database/db_connector.js";
 import { problems, submissions, interviewSessions } from "../../database/schema.js";
@@ -7,6 +7,11 @@ import { submissionQueue } from '../../queues/submissionQueue.js';
 import { appendChatMessage, getChatHistory, clearChatHistory } from "./cache.service.js";
 import { getInterviewerStream } from "./llm.service.js";
 import { evaluateInterview, calculateGamifiedRank } from "./grading.service.js";
+
+// Matches the 45-minute session length enforced by the frontend's InterviewTimer, plus a
+// few minutes of grace for network/reload lag before we consider a session abandoned.
+const INTERVIEW_DURATION_MS = 45 * 60 * 1000;
+const STALE_SESSION_GRACE_MS = 5 * 60 * 1000;
 
 export const startInterview = async (req, res) => {
     try {
@@ -24,19 +29,55 @@ export const startInterview = async (req, res) => {
 
         const userId = req.user.userId; // Extracted safely from requireAuth middleware
 
+        // Resume support: if the candidate already has an unfinished session for this problem
+        // (e.g. they reloaded the page), hand back that same session instead of starting over.
+        const existingSession = await db.query.interviewSessions.findFirst({
+            where: and(
+                eq(interviewSessions.userId, userId),
+                eq(interviewSessions.problemId, problemId),
+                isNull(interviewSessions.endedAt)
+            ),
+            orderBy: desc(interviewSessions.startedAt)
+        });
+
+        const isStale = existingSession &&
+            (Date.now() - new Date(existingSession.startedAt).getTime()) > (INTERVIEW_DURATION_MS + STALE_SESSION_GRACE_MS);
+
+        if (existingSession && !isStale) {
+            const chatHistory = await getChatHistory(existingSession.sessionId);
+            return res.status(200).json({
+                success: true,
+                sessionId: existingSession.sessionId,
+                startedAt: existingSession.startedAt,
+                chatHistory,
+                message: "Resumed existing interview session."
+            });
+        }
+
+        // A stale, never-finished session (e.g. an old abandoned tab) shouldn't linger as
+        // "active" forever, since that would block the candidate from ever starting fresh.
+        if (existingSession && isStale) {
+            await db.update(interviewSessions)
+                .set({ endedAt: new Date() })
+                .where(eq(interviewSessions.sessionId, existingSession.sessionId));
+            await clearChatHistory(existingSession.sessionId);
+        }
+
         // Generate a unique session ID for this specific interview attempt
         const sessionId = crypto.randomUUID();
 
         // Create a new interview session in the database
-        await db.insert(interviewSessions).values({
+        const [newSession] = await db.insert(interviewSessions).values({
             sessionId: sessionId,
             userId: userId,
             problemId: problemId,
-        });
+        }).returning({ startedAt: interviewSessions.startedAt });
 
         return res.status(201).json({
             success: true,
             sessionId: sessionId,
+            startedAt: newSession.startedAt,
+            chatHistory: [],
             message: "Interview session started successfully."
         });
     }
@@ -79,8 +120,11 @@ export const streamInterviewChat = async (req, res) => {
         // Saving the user's message to Redis
         // Only saving the human 'message' to Redis if it actually exists.
         // If the user just clicked "Submit" without typing a chat message, 'message' will be empty.
+        // Ghost/system-observation turns (the frontend sends the same text as both 'message' and
+        // 'systemObservation') are flagged so they can be hidden from the candidate-facing
+        // transcript on resume, while still being kept for AI/grading context.
         if (message && message.trim() !== "") {
-            await appendChatMessage(sessionId, "user", message);
+            await appendChatMessage(sessionId, "user", message, { isGhost: !!systemObservation });
         }
 
         // Retrieving the full chat history (which now includes the user's latest message)
@@ -91,8 +135,9 @@ export const streamInterviewChat = async (req, res) => {
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
 
-        // Connecting to the LLM
-        const stream = await getInterviewerStream(chatHistory, problem, currentCode, systemObservation);
+        // Connecting to the LLM. Passing the session's startedAt lets the interviewer reason
+        // about elapsed/remaining time and pace itself instead of following a fixed script.
+        const stream = await getInterviewerStream(chatHistory, problem, currentCode, systemObservation, session.startedAt);
 
         let fullAiResponse = "";
 

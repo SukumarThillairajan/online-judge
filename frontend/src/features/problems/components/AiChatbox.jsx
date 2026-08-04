@@ -5,7 +5,7 @@ import rehypeKatex from 'rehype-katex';
 import { apiClient } from '../../../api/apiClient';
 
 // Wrapping the AiChatBox component with forwardRef to allow parent components to call its methods
-const AiChatbox = forwardRef(({ sessionId, problem, currentCode, isInterviewActive, onUserActivity }, ref) => {
+const AiChatbox = forwardRef(({ sessionId, problem, currentCode, isInterviewActive, onUserActivity, initialMessages }, ref) => {
     const API_URL = apiClient.defaults.baseURL;
 
     const [messages, setMessages] = useState([]);
@@ -14,11 +14,30 @@ const AiChatbox = forwardRef(({ sessionId, problem, currentCode, isInterviewActi
     const isStreamingRef = useRef(false); // Use a ref to manage the streaming lock
     const chatBottomRef = useRef(null);
     const initialMessageSent = useRef(false); // Ref to prevent double-sending in StrictMode
+    const hydratedRef = useRef(false); // Ref to ensure we only hydrate from history once
 
     // Auto-scroll to bottom as new tokens/chunks arrive
     useEffect(() => {
         chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    // Resume support: if the backend handed back an existing transcript (the candidate
+    // reloaded mid-session), replay it into the UI once. Hidden ghost/system-observation turns
+    // and empty assistant placeholders (from silent nudges) are filtered out since they were
+    // never meant to be candidate-facing.
+    useEffect(() => {
+        if (hydratedRef.current || !Array.isArray(initialMessages)) return;
+        hydratedRef.current = true;
+
+        const visibleMessages = initialMessages
+            .filter((msg) => !msg.isGhost && msg.content && msg.content.trim() !== '')
+            .map((msg) => ({ role: msg.role, content: msg.content }));
+
+        if (visibleMessages.length > 0) {
+            setMessages(visibleMessages);
+            initialMessageSent.current = true; // History already exists; don't re-trigger the kickoff prompt
+        }
+    }, [initialMessages]);
 
     // Initial prompt trigger: Ask the AI to introduce the problem when the session starts
     useEffect(() => {

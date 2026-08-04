@@ -11,18 +11,50 @@ if (!process.env.GEMINI_API_KEY) {
 }
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
+// Matches the 45-minute session length enforced by the frontend's InterviewTimer.
+const INTERVIEW_DURATION_MINUTES = 45;
+
+/**
+ * Derives pacing signals (elapsed/remaining time, gap since the candidate's last turn) from
+ * the session's start time and the timestamps stored on each chat message. Both are needed for
+ * the interviewer to adapt its pacing instead of following a fixed question script.
+ * @param {Array} chatHistory - The array of previous messages, each with a `createdAt` (ms).
+ * @param {String|Date} sessionStartedAt - When the interview session began.
+ */
+const derivePacingContext = (chatHistory, sessionStartedAt) => {
+    const sessionStartMs = sessionStartedAt ? new Date(sessionStartedAt).getTime() : null;
+    const elapsedMinutes = sessionStartMs ? Math.max(0, Math.round((Date.now() - sessionStartMs) / 60000)) : null;
+    const remainingMinutes = elapsedMinutes !== null ? Math.max(0, INTERVIEW_DURATION_MINUTES - elapsedMinutes) : null;
+
+    // Gap between the candidate's latest message and the one before it, as a proxy for
+    // "have they been stuck/thinking silently" beyond the frontend's own idle ghost-prompt.
+    let minutesSincePriorTurn = null;
+    if (chatHistory.length >= 2) {
+        const previous = chatHistory[chatHistory.length - 2];
+        const latest = chatHistory[chatHistory.length - 1];
+        if (previous?.createdAt && latest?.createdAt) {
+            minutesSincePriorTurn = Math.max(0, Math.round((latest.createdAt - previous.createdAt) / 60000));
+        }
+    }
+
+    return { elapsedMinutes, remainingMinutes, minutesSincePriorTurn };
+};
+
 /**
  * Connects to the LLM and returns a stream of the AI's response.
  * @param {Array} chatHistory - The array of previous messages from Redis.
  * @param {Object} problem - The database object of the current problem.
  * @param {String} currentCode - The live code from the Monaco Editor.
  * @param {String} systemObservation - The observation made by the system.
+ * @param {String|Date} sessionStartedAt - When the interview session began (for pacing).
  */
-export const getInterviewerStream = async (chatHistory, problem, currentCode, systemObservation) => {
+export const getInterviewerStream = async (chatHistory, problem, currentCode, systemObservation, sessionStartedAt) => {
     if (!Array.isArray(chatHistory) || !problem?.problemName) {
         console.error("getInterviewerStream called with invalid parameters.", { hasHistory: Array.isArray(chatHistory) && chatHistory.length > 0, hasProblem: !!problem });
         throw new Error("Invalid parameters provided to get interviewer stream.");
     }
+
+    const { elapsedMinutes, remainingMinutes, minutesSincePriorTurn } = derivePacingContext(chatHistory, sessionStartedAt);
 
     // Defining the "State machine" prompt
     const systemPrompt = `
@@ -46,6 +78,16 @@ export const getInterviewerStream = async (chatHistory, problem, currentCode, sy
         \`\`\`
         ${currentCode ? currentCode : "// No code yet."}
         \`\`\`
+
+        --- SESSION PACING ---
+        TOTAL INTERVIEW LENGTH: ${INTERVIEW_DURATION_MINUTES} minutes.
+        ${elapsedMinutes !== null ? `ELAPSED SO FAR: ${elapsedMinutes} minute(s). REMAINING: ${remainingMinutes} minute(s).` : "Elapsed time unavailable for this turn."}
+        ${minutesSincePriorTurn !== null ? `TIME SINCE THE CANDIDATE'S LAST MESSAGE: ${minutesSincePriorTurn} minute(s).` : ""}
+        PACING RULES:
+        - If plenty of time remains and the candidate is moving quickly/correctly, you may go deeper (probe edge cases, ask them to justify choices) instead of rushing ahead.
+        - If REMAINING is under ~15 minutes and they are still stuck in Phase 1-3 (haven't started coding), gently accelerate: reveal constraints proactively, nudge more directly towards the optimal approach, and encourage them to start coding sooner rather than waiting for full self-discovery.
+        - If TIME SINCE THE CANDIDATE'S LAST MESSAGE is unusually long (more than 5 minutes) for the current phase, treat it like a candidate who may be stuck or silently thinking out loud — consider a brief, gentle check-in rather than staying silent indefinitely.
+        - Never mention these numbers, this section, or that you are tracking time. Act like a natural human interviewer who is simply aware of the clock.
 
         --- INTERVIEW PHASES (STATE MACHINE) ---
 

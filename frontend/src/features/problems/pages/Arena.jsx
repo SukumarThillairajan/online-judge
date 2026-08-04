@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 
 import { apiClient } from '../../../api/apiClient.js';
@@ -47,10 +47,12 @@ const Arena = () => {
 
   // --- Master Interview State ---
   const [sessionId, setSessionId] = useState(null);
+  const [sessionStartedAt, setSessionStartedAt] = useState(null); // Server-authoritative start time, drives the timer
+  const [initialChatHistory, setInitialChatHistory] = useState(null); // Populated only when resuming a session
   const [isInterviewActive, setIsInterviewActive] = useState(false);
   const chatBoxRef = useRef(null); // Ref to shoot Ghost Prompts into the Chatbox
   const idleTimerRef = useRef(null); // Ref to store the inactivity timer
-  const [lastActivityTime, setLastActivityTime] = useState(Date.now()); // New state to track any user activity
+  const [lastActivityTime, setLastActivityTime] = useState(() => Date.now()); // New state to track any user activity
 
   // --- Editor & Execution State ---
   const [language, setLanguage] = useState('javascript');
@@ -96,7 +98,10 @@ const Arena = () => {
       try {
         const res = await apiClient.post('/api/interviews/start', { problemId });
         // Account for different backend JSON response wrappers
-        setSessionId(res.data.sessionId || res.data.data?.sessionId);
+        const payload = res.data.data || res.data;
+        setSessionId(payload.sessionId);
+        setSessionStartedAt(payload.startedAt || new Date().toISOString());
+        setInitialChatHistory(Array.isArray(payload.chatHistory) ? payload.chatHistory : []);
         setIsInterviewActive(true);
       } catch (err) {
         console.error("Failed to start interview session", err);
@@ -416,6 +421,7 @@ const Arena = () => {
           <InterviewTimer
             isActive={isInterviewActive}
             onTimeUp={handleEndInterview}
+            startedAt={sessionStartedAt}
           />
           {/* The Manual "End Interview" Button */}
           {isInterviewActive && (
@@ -441,6 +447,7 @@ const Arena = () => {
             currentCode={code}
             isInterviewActive={isInterviewActive}
             onUserActivity={handleUserActivity} // Pass down the activity handler
+            initialMessages={initialChatHistory} // Populated only when resuming a session
           />
         </div>
 

@@ -1,6 +1,6 @@
 # **Ascend: The Next Generation Interviewer — High-Level Design (HLD)**
 
-*Version 2.0 — AI Interviewer Integration. This document supersedes the V1 HLD and describes the system as it is currently deployed.*
+*Version 2.0 — AI Interviewer Integration, updated with session resilience (server-authoritative timer, resumable sessions on reload) and adaptive interview pacing. This document supersedes the V1 HLD and describes the system as it is currently deployed.*
 
 ## **0\. High-Level Architecture Diagram**
 
@@ -219,10 +219,12 @@ The `run-code` job follows the same compile-then-execute path but against a sing
 
 This is the defining addition of V2. The Coding Arena is no longer a solitary editor — it is a conversational interview with a stateful examiner.
 
+**Input mode.** The entire interview — problem discussion, approach explanation, follow-ups — happens through typed chat (§5.4). There is no speech-to-text or text-to-speech in this version; the candidate types and the interviewer replies with streamed text. This is a deliberate scope cut for V2, not an oversight, and it means the current system does not exercise verbal communication the way an in-person or phone interview would — closing that gap is tracked as Voice Interviews in the V3 roadmap (§11).
+
 ### **5.1 Session Lifecycle**
 
-1. **Start.** The candidate opens a problem. The frontend calls `POST /api/interviews/start` on mount and receives a `sessionId`, which is held in React component state for the lifetime of the Arena. A row is inserted into `interview_sessions` with `ended_at` NULL.  
-2. **Live phase.** Every chat turn hits `POST /api/interviews/chat`. The server verifies that the session belongs to the requesting user *and* the requested problem before touching the LLM. The transcript lives in Redis under `interview:chat:<sessionId>` with a **2-hour TTL**, so an abandoned interview evicts itself from memory automatically.  
+1. **Start (with resume).** The candidate opens a problem and the frontend calls `POST /api/interviews/start` on mount. The server first looks for an existing, unfinished session (`ended_at IS NULL`) for that user and problem. If one exists and is younger than the 45-minute session length plus a 5-minute grace window, it is handed back as-is — `sessionId`, `startedAt`, and the archived Redis transcript — so a page reload or a dropped connection resumes exactly where the candidate left off instead of silently starting over. Otherwise a fresh row is inserted into `interview_sessions` with `ended_at` NULL. A session past the grace window is closed out server-side (`ended_at` set, Redis cache cleared) before a new one is created, so an abandoned tab can never permanently block a candidate from starting again.  
+2. **Live phase.** Every chat turn hits `POST /api/interviews/chat`. The server verifies that the session belongs to the requesting user *and* the requested problem before touching the LLM. Each message appended to the Redis transcript is stamped with a `createdAt` timestamp and an `isGhost` flag (§5.3), which together drive both session-pacing awareness (§5.2) and faithful UI hydration on resume. The transcript lives in Redis under `interview:chat:<sessionId>` with a **2-hour TTL**, so a truly abandoned interview still evicts itself from memory automatically.  
 3. **Finish.** Triggered either by the 45-minute timer expiring or by the candidate pressing "End Interview". The server snapshots the code, grades the transcript, persists the result, and deletes the Redis key.
 
 ### **5.2 The Interviewer: A Prompt-Enforced State Machine**
@@ -238,6 +240,8 @@ The system instruction sent to Gemini defines a strict six-phase progression, an
 
 Each turn is sent with the problem record, the **live contents of the Monaco editor**, and the full Redis transcript, so the interviewer can see the candidate's code as it is being written.
 
+**Pacing awareness.** Alongside the phase rules, every system prompt carries a live *Session Pacing* block: minutes elapsed and remaining against the 45-minute session (derived from the session's `started_at`), and the gap since the candidate's last message (derived from consecutive `createdAt` timestamps in the transcript). The model is instructed to use this to adapt rather than to follow a fixed script — going deeper when time is abundant and the candidate is moving well, accelerating hints and constraint reveals when time is short and the candidate hasn't started coding yet, and treating an unusually long gap since the last message as a possible sign of being stuck. It is explicitly told never to surface these numbers or acknowledge that it is tracking time.
+
 ### **5.3 The Hybrid "Ghost Prompt" Architecture**
 
 The interviewer is fed machine-generated observations that the candidate never sees. These are appended to the outgoing message as a bracketed `[SYSTEM OBSERVATION]` block that the model is instructed never to echo verbatim. Four triggers are wired up:
@@ -248,6 +252,8 @@ The interviewer is fed machine-generated observations that the candidate never s
 * **Submit returned:** An **Accepted** verdict triggers a follow-up question; a **Wrong Answer** hands over the failing input and the expected-versus-actual outputs so the AI can nudge toward the missed edge case.
 
 This is what makes the session feel supervised rather than merely transcribed: the AI reacts to what the candidate *does*, not only to what they say.
+
+Ghost/system-observation turns are also flagged with `isGhost: true` in the stored transcript, alongside the initial silent kickoff message that opens every session. This keeps them available to the AI (and to the grader) as context, while excluding them from what gets replayed into the chat UI when a session is resumed (§5.1) — a candidate resuming mid-interview only ever sees their own real turns and the interviewer's real replies.
 
 ### **5.4 Transport: Server-Sent Events**
 
@@ -299,18 +305,18 @@ The final write is wrapped in a single database transaction: the submission rece
 
 * **Page 1: Authentication Space** (`/login`, `/register`) — React Hook Form validation, JWT cookie set on success.  
 * **Page 2: Dashboard** (`/dashboard`) — the problem list, each row annotated with the user's **best gamified rank** for that problem, served by the window-function CTE behind `/api/problems/user-status`.  
-* **Page 3: Coding Arena** (`/problems/:id`) — a split layout: Monaco editor, language selector, custom-input panel and terminal on one side; the AI chat interface and the live countdown on the other. *Run Code* and *Submit Code* remain, now wired into the ghost-prompt pipeline and into an in-editor error-line highlight for compilation failures (§6.6).  
+* **Page 3: Coding Arena** (`/problems/:id`) — a split layout: Monaco editor, language selector, custom-input panel and terminal on one side; the AI chat interface (text-only — typed input, streamed text replies; no voice) and the live countdown on the other. *Run Code* and *Submit Code* remain, now wired into the ghost-prompt pipeline and into an in-editor error-line highlight for compilation failures (§6.6).  
 * **Page 4: Submissions & Leaderboard** (`/problems/:id/submissions`) — two tabs: My Submissions and the rank-ordered Leaderboard.
 
 All application routes sit behind a `ProtectedRoute` wrapper that resolves `GET /api/auth/verify` through TanStack Query (`retry: false`, 5-minute `staleTime`), so an expired cookie redirects to login instead of rendering a broken shell.
 
 ### **6.2 The Interview Timer**
 
-A 45-minute (2,700-second) countdown drives the session. It turns red and pulses in the final five minutes, and on reaching zero it fires the grading pipeline automatically — an unattended interview still produces a graded result.
+A 45-minute (2,700-second) countdown drives the session, computed on every tick as `remaining = 2700 - (now - startedAt)` against the session's server-issued `startedAt` rather than a local decrementing counter. This keeps the displayed clock consistent with what the AI interviewer itself is reasoning about (§5.2) and means the countdown survives a page reload instead of resetting to a fresh 45 minutes. It turns red and pulses in the final five minutes, and on reaching zero it fires the grading pipeline automatically — an unattended interview still produces a graded result.
 
-### **6.3 Session Lifetime**
+### **6.3 Session Lifetime & Resume**
 
-The `sessionId` lives purely in React state. It is requested once on mount and discarded when the Arena unmounts, which means a page refresh deliberately starts a **fresh interview session** rather than resuming the old one. Nothing about the live interview is trusted to browser storage: the authoritative transcript is in Redis and the session row is in PostgreSQL, so an abandoned session is reclaimed by its 2-hour TTL rather than lingering as a stale client-side pointer.
+The `sessionId` lives purely in React state — nothing about the live interview is trusted to browser storage. On mount, the Arena always calls `POST /api/interviews/start`, but the *server* decides whether that returns a brand-new session or resumes an existing one (§5.1): a page refresh, a dropped connection, or an accidental tab close no longer discards progress. On resume, the response's archived transcript rehydrates the chat UI (filtered down to real, candidate-facing turns — see §5.3) and its `startedAt` re-anchors the countdown timer (§6.2), so the Arena reconstructs itself to look exactly as it did before the reload. The authoritative transcript still lives in Redis and the session row in PostgreSQL; a session that goes untouched long enough to exceed the interview length plus a grace window is treated as abandoned and closed out rather than resumed indefinitely, and the Redis transcript is still reclaimed by its 2-hour TTL as a backstop.
 
 ### **6.4 Navigation Guard**
 
@@ -387,7 +393,7 @@ To ensure the Online Judge remains stable during peak traffic and unexpected sys
 * **Docker Startup Failures:** If the Docker daemon cannot allocate a container due to host resource exhaustion, the worker catches the exception via a strict try-catch block instead of crashing, and writes **Internal System Error** along with the error message into `error_details`, ensuring the UI can still inform the candidate.  
 * **Evaluation Timeouts During Grading:** The finish route's verdict poll gives up after 20 seconds and returns a clean 500 rather than hanging the request indefinitely.  
 * **AI Failures:** A malformed or incomplete Gemini payload is rejected before it reaches the database. Errors occurring mid-stream are delivered as an in-band SSE error frame followed by `[DONE]`, so the chat UI never freezes.  
-* **Abandoned Sessions:** The 2-hour Redis TTL reclaims memory from interviews that are simply walked away from.  
+* **Abandoned Sessions:** The 2-hour Redis TTL reclaims memory from interviews that are simply walked away from, and any `interview_sessions` row still unfinished past the 45-minute-plus-grace window is closed out server-side the next time that user starts an interview, so it can never permanently block a fresh attempt.  
 * **Database Rollback:** If enqueueing an evaluation job fails after the submission row has been written, that row is deleted, so a user never sees a submission permanently stuck at *Pending*.  
 * **Graceful Shutdown:** On SIGINT the process closes the BullMQ queue and the PostgreSQL pool before exiting, avoiding half-written jobs and leaked connections.
 
@@ -451,13 +457,15 @@ services:
 ## **11\. V3 Roadmap**
 
 * **Admin Console:** A first-class UI for problem authoring, test case management and submission forensics, replacing direct API calls.
-* **Voice Interviews:** Speech-to-text for the candidate and text-to-speech for the interviewer, closing the last gap between this and a real phone screen.  
-* **WebSocket Upgrade:** SSE is one-directional by design. A bidirectional channel would enable true collaborative editing, live "the interviewer is typing" affordances, and server-driven timer authority.  
-* **Server-Authoritative Timer:** The 45-minute clock currently runs client-side. Moving the deadline into the Redis session record removes the last piece of trust placed in the browser.  
+* **Frontend Revamp:** A visual and UX pass across the Dashboard, Coding Arena, and Submissions/Leaderboard screens — improved information density, accessibility, and a more polished interview-room feel — decoupled from the underlying API and data model, which remain stable through this change.
+* **Spaced-Repetition Problem Locking:** Gate retries on mastery rather than attempts. A problem stays open until the candidate earns an **S-rank** graded interview submission for it (§5.7); any submission graded below S-rank locks that problem and schedules its next unlock according to a spaced-repetition calendar — growing review intervals the way flashcard systems do, rather than a fixed cooldown — turning the dashboard from a static problem list into a review queue tuned to what each candidate has actually mastered. Implementing it needs a new per-user-per-problem schedule (next-eligible-date, interval, streak), most naturally a table keyed on `(user_id, problem_id)` plus a scheduling function triggered whenever `finish` grades a submission, and a corresponding lock/unlock affordance threaded through the `/api/problems/user-status` response and the Dashboard UI.
+* **Richer Grading Rubric:** Expand the current four-pillar, eight-metric rubric (§5.6) into a more exhaustive set of graded attributes — so the AI grader's `metrics` object and written feedback map more closely onto what a real interview panel scores, instead of compressing performance into four broad pillars.
+* **Editorial Generation using AI:** Using the archived transcripts to generate personalized post-interview editorials targeted at each candidate's specific weaknesses.
+* **WebSocket Upgrade:** SSE is one-directional by design. A bidirectional channel would enable true collaborative editing and live "the interviewer is typing" affordances.        
 * **Single-Container Evaluation:** Today the engine starts one container *per test case*, so a problem with twenty hidden cases pays the container startup cost twenty times — and that startup, not the candidate's code, dominates the wall clock for most submissions. The optimization is to boot **one container per submission** and iterate the test cases inside it via a small harness script that reads each input, runs the binary, and emits a per-case result. This requires reworking how the two resource verdicts are detected, because both currently ride on the container boundary:  
   * **Time Limit Exceeded:** the 3-second ceiling is presently the `docker run` wall clock, which disappears once a single container spans every case. The harness must instead impose a per-case deadline from the inside — `timeout 3s` around each invocation, or a `setrlimit(RLIMIT_CPU)` on the child — and report a distinct exit status so the worker can still attribute the TLE to the exact test case that caused it.  
   * **Memory Limit Exceeded:** `--memory 256m` is a cgroup applied to the *whole* container. Shared across every test case, one greedy case would OOM-kill the container and destroy the results of all the cases that already passed. The fix is to move the ceiling down to the process — `setrlimit(RLIMIT_AS)` or `ulimit -v` per invocation — so a single case can be killed and reported while the harness survives to run the remainder. Note that this is *stricter* than the per-container detection the engine performs today: the current exit-code-137 check correctly identifies an OOM kill, but with one container spanning every test case it could no longer attribute that kill to the specific case responsible.  
-  * **Isolation trade-off:** reusing one container means consecutive test cases are no longer perfectly isolated — leftover files, lingering background threads, or a corrupted heap could leak from one case into the next. The harness must reset the working directory between cases and treat any non-zero harness-level failure as a full-submission Internal System Error rather than silently mis-scoring the remaining cases.  
-* **Multi-Round Interviews:** Chaining two or three problems into a single graded loop, with a cumulative hiring-committee-style verdict.  
-* **Structured Observability:** OpenTelemetry traces spanning the API, the queue and the sandbox, plus per-language execution metrics and AI token accounting.    
-* **Editorial Generation using AI:** Using the archived transcripts to generate personalized post-interview editorials targeted at each candidate's specific weaknesses.
+  * **Isolation trade-off:** reusing one container means consecutive test cases are no longer perfectly isolated — leftover files, lingering background threads, or a corrupted heap could leak from one case into the next. The harness must reset the working directory between cases and treat any non-zero harness-level failure as a full-submission Internal System Error rather than silently mis-scoring the remaining cases.
+* **Structured Observability:** OpenTelemetry traces spanning the API, the queue and the sandbox, plus per-language execution metrics and AI token accounting.
+* **Voice Interviews:** Speech-to-text for the candidate and text-to-speech for the interviewer, closing the last gap between this and a real phone screen.  
+* **Multi-Round Interviews:** Chaining two or three problems into a single graded loop, with a cumulative hiring-committee-style verdict.

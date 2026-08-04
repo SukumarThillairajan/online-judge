@@ -43,8 +43,11 @@ export const getChatHistory = async (sessionId) => {
  * @param {string} sessionId - The unique identifier for the interview session.
  * @param {string} role - The role of the message sender (e.g., 'user' or 'assistant').
  * @param {string} content - The content of the message.
+ * @param {Object} [options]
+ * @param {boolean} [options.isGhost] - True for hidden system-observation/ghost-prompt turns that
+ *   should stay out of the candidate-facing transcript on resume, but still count for AI context.
  */
-export const appendChatMessage = async (sessionId, role, content) => {
+export const appendChatMessage = async (sessionId, role, content, options = {}) => {
     if (!sessionId || !role || !content) {
         console.error("appendChatMessage called with missing parameters.", { sessionId, role, content: content ? '(has content)' : content });
         // Returning the current history (or empty) is a safe default.
@@ -57,8 +60,9 @@ export const appendChatMessage = async (sessionId, role, content) => {
         const currentData = await redisConnection.get(key);
         const history = currentData ? JSON.parse(currentData) : [];
 
-        // Appending the new message to the history
-        history.push({ role, content });
+        // Appending the new message to the history, timestamped so the AI can reason about
+        // pacing and so a resumed session can be replayed.
+        history.push({ role, content, createdAt: Date.now(), isGhost: !!options.isGhost }); // !! is used to ensure isGhost is a boolean
 
         // Setting the updated history back to Redis with a TTL
         await redisConnection.set(key, JSON.stringify(history), "EX", INTERVIEW_TTL);

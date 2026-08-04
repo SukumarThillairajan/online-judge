@@ -4,6 +4,8 @@ An online judge that does not just grade your code. It interviews you.
 
 Pick a problem and you are dropped into a 45-minute mock interview with an AI examiner that runs a real interview loop: it withholds the constraints until you ask for them, refuses to let you write code before you have explained your approach, pushes back on brute force, and watches your editor while you work. When the timer stops, your transcript and your final submission are graded against a 100-point rubric and mapped to a gamified rank.
 
+**Input mode:** the interview is conducted entirely through typed chat — you explain your approach and answer follow-ups by typing, and the interviewer streams its replies back as text. There is no voice or speech component in this version (see [Roadmap](docs/HLD.md#11-v3-roadmap)), so it does not yet exercise verbal communication the way an in-person or phone interview would.
+
 Underneath it is a full online judge — sandboxed multi-language execution, hidden test cases, verdicts, and per-problem leaderboards.
 
 **Live:** [online-judge-sable.vercel.app](https://online-judge-sable.vercel.app)
@@ -34,7 +36,10 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
 - **Six-phase state machine.** Greeting → Problem reveal → Approach discussion → Complexity analysis → Coding → Follow-ups. The model is prompt-constrained to advance one step at a time and never to write your solution for you.
 - **Earned information.** Sample test cases are handed over on request. Constraints stay hidden until you ask or until you propose a brute force and get pushed to optimize.
 - **Ghost prompts.** The interviewer receives machine-generated observations you never see: you have been idle for five minutes, your custom run produced the wrong output, your submission failed on a hidden edge case. It reacts to what you *do*, not only to what you type in chat.
+- **Pacing-aware, not scripted.** Every prompt sent to the model carries live elapsed/remaining time and the gap since your last message, so the interviewer adapts — going deeper when time allows, accelerating hints when the clock is short, and noticing unusually long silences — instead of following a fixed question sequence.
 - **Token-by-token streaming** over Server-Sent Events, so replies appear as they are generated.
+- **Text-based, not voice.** The entire interview — your explanations, the interviewer's questions and follow-ups — happens through typed chat. There is no speech-to-text or text-to-speech in this version, so it does not yet test verbal communication the way a live phone screen does.
+- **Resumable, server-timed sessions.** The 45-minute countdown is anchored to a server-recorded start time, not a local counter — a page reload or dropped connection resumes the same session, transcript and remaining time intact, instead of resetting to a fresh interview.
 - **Explicit exits.** Navigating away from a live interview raises a three-way guard: stay, leave ungraded, or end and grade. Nothing about the session is kept in browser storage — the transcript lives in Redis and the session row in Postgres.
 
 ### The Judge
@@ -301,7 +306,7 @@ All routes require the JWT cookie except `POST /api/auth/register`, `POST /api/a
 
 | Method | Endpoint | Description |
 | :---- | :---- | :---- |
-| `POST` | `/api/interviews/start` | Create a session, return the `sessionId`. |
+| `POST` | `/api/interviews/start` | Resume an existing unfinished session for this user + problem if one exists (returns its `sessionId`, `startedAt`, and saved transcript); otherwise create a new one. |
 | `POST` | `/api/interviews/chat` | SSE stream of the interviewer's reply. Rate limited to 6/min/IP. |
 | `POST` | `/api/interviews/finish` | Snapshot, judge, grade, rank, and persist. Rate limited to 6/min/IP. |
 

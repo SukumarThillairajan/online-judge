@@ -9,7 +9,7 @@ digraph Ascend {
     fontsize=11.5; fontcolor="#1d4ed8"; color="#8fb2fb"; style="rounded,filled"; fillcolor="#f5f9ff"; margin=11;
     ui   [label=<<b>React 19 + Vite SPA</b><br/><font point-size="8.5">TanStack Query · Router 7</font>>, fillcolor="#cfe0ff", color="#6d97f5"];
     mon  [label=<<b>Monaco Editor</b><br/><font point-size="8.5">compile-error<br/>line highlight</font>>, fillcolor="#e3edff", color="#89a9f5"];
-    chat [label=<<b>AI Chatbox</b><br/><font point-size="8.5">SSE reader<br/>45-min timer</font>>, fillcolor="#e3edff", color="#89a9f5"];
+    chat [label=<<b>AI Chatbox</b><br/><font point-size="8.5">text-only · SSE reader<br/>server-synced 45-min timer</font>>, fillcolor="#e3edff", color="#89a9f5"];
     {rank=same; mon; chat;}
     ui -> mon [style=invis]; ui -> chat [style=invis];
   }

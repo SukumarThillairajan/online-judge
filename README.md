@@ -40,7 +40,7 @@ Underneath it is a full online judge — sandboxed multi-language execution, hid
 - **Token-by-token streaming** over Server-Sent Events, so replies appear as they are generated.
 - **Text-based, not voice.** The entire interview — your explanations, the interviewer's questions and follow-ups — happens through typed chat. There is no speech-to-text or text-to-speech in this version, so it does not yet test verbal communication the way a live phone screen does.
 - **Resumable, server-timed sessions.** The 45-minute countdown is anchored to a server-recorded start time, not a local counter — a page reload or dropped connection resumes the same session, transcript and remaining time intact, instead of resetting to a fresh interview.
-- **Your code survives a reload too.** The editor's contents and selected language are autosaved to Redis on a debounce, independently of chat activity, and restored on resume alongside the transcript and timer — so a refresh never costs you your in-progress solution.
+- **Your code survives a reload too — in every language.** The editor keeps a separate autosaved snapshot per language, debounced to Redis independently of chat activity and restored on resume alongside the transcript and timer, so switching the language dropdown mid-interview never discards what you'd written in the language you're leaving.
 - **Explicit exits.** Navigating away from a live interview raises a three-way guard: stay, leave ungraded, or end and grade. Nothing about the session is kept in browser storage — the transcript lives in Redis and the session row in Postgres.
 
 ### The Judge
@@ -307,9 +307,9 @@ All routes require the JWT cookie except `POST /api/auth/register`, `POST /api/a
 
 | Method | Endpoint | Description |
 | :---- | :---- | :---- |
-| `POST` | `/api/interviews/start` | Resume an existing unfinished session for this user + problem if one exists (returns its `sessionId`, `startedAt`, saved transcript, and saved editor code & language); otherwise create a new one. Rate limited to 6/min/IP. |
+| `POST` | `/api/interviews/start` | Resume an existing unfinished session for this user + problem if one exists (returns its `sessionId`, `startedAt`, saved transcript, and saved per-language editor code & active language); otherwise create a new one. Rate limited to 6/min/IP. |
 | `POST` | `/api/interviews/chat` | SSE stream of the interviewer's reply. Rate limited to 6/min/IP. |
-| `POST` | `/api/interviews/code` | Autosave the live editor contents (debounced client-side). Not rate limited. |
+| `POST` | `/api/interviews/code` | Autosave the live editor contents per language (debounced client-side). Not rate limited. |
 | `POST` | `/api/interviews/finish` | Snapshot, judge, grade, rank, and persist. Rate limited to 6/min/IP. |
 
 ### System
@@ -362,7 +362,7 @@ Before grading, the *smart snapshot* step reconciles what you actually submitted
 | 50–59 | D-rank |
 | 0–49 | E-rank |
 
-An empty or template-only submission is floored at 0. The UI shows only the tier; the raw score stays in the database as the leaderboard sort key.
+An empty or template-only submission doesn't automatically floor the whole score at 0 — only the pillars that genuinely require code (code quality/edge cases, and the speed-to-Accepted portion of problem solving) zero out; a correct verbal approach, accurate complexity analysis, and sharp constraint clarification are still graded and credited from the transcript alone. The UI shows only the tier; the raw score stays in the database as the leaderboard sort key.
 
 ---
 

@@ -35,51 +35,74 @@ const EvaluationModal = ({ isOpen, evaluationData, isGrading, problemId, submiss
                         </div>
                     ) : evaluationData ? (
                         <div className="space-y-6">
-                            
+
                             {/* Summary Text */}
                             <div className="bg-gray-950 p-4 rounded-lg border border-gray-800">
                                 <p className="text-gray-300 leading-relaxed text-sm">
                                     {evaluationData.summary}
                                 </p>
+                                {evaluationData.metrics?.sessionOutcome && (
+                                    <div className="mt-3">
+                                        <SessionOutcomeBadge outcome={evaluationData.metrics.sessionOutcome} />
+                                    </div>
+                                )}
                             </div>
 
                             {/* Metrics Grid */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <MetricCard 
-                                    title="Constraint Clarification" 
+                                <MetricCard
+                                    title="Constraint Clarification"
                                     icon="🎯"
-                                    score={evaluationData.metrics.askedConstraints} 
-                                    desc="Did you clarify constraints before coding?" 
+                                    score={evaluationData.metrics.askedConstraints}
+                                    desc="Did you clarify constraints before coding?"
                                 />
-                                <MetricCard 
-                                    title="First Approach Quality" 
+                                <MetricCard
+                                    title="First Approach Quality"
                                     icon="💡"
-                                    score={evaluationData.metrics.firstApproach} 
-                                    desc="Was your initial idea optimal?" 
+                                    score={evaluationData.metrics.firstApproach}
+                                    desc="Was your initial idea optimal?"
                                 />
-                                <MetricCard 
-                                    title="Edge Cases" 
+                                <MetricCard
+                                    title="Time Complexity"
+                                    icon="⏱️"
+                                    score={evaluationData.metrics.timeComplexity}
+                                    desc="Did you correctly analyze time Big-O?"
+                                />
+                                <MetricCard
+                                    title="Space Complexity"
+                                    icon="📦"
+                                    score={evaluationData.metrics.spaceComplexity}
+                                    desc="Did you correctly analyze space Big-O?"
+                                />
+                                <MetricCard
+                                    title="Edge Cases"
                                     icon="🛡️"
-                                    score={evaluationData.metrics.edgeCases} 
-                                    desc="Did you independently handle edge cases?" 
+                                    score={evaluationData.metrics.edgeCases}
+                                    desc="Did you independently handle edge cases?"
                                 />
-                                <MetricCard 
-                                    title="Hint Dependency" 
+                                <MetricCard
+                                    title="Code Quality"
+                                    icon="🧹"
+                                    score={evaluationData.metrics.codeQuality}
+                                    desc="Was your code clean and readable?"
+                                />
+                                <MetricCard
+                                    title="Hint Dependency"
                                     icon="🧩"
-                                    score={evaluationData.metrics.hintUsage} 
-                                    desc="How many hints were needed?" 
+                                    score={evaluationData.metrics.hintUsage}
+                                    desc="How many hints were needed?"
                                 />
-                                <MetricCard 
-                                    title="Follow-ups Answered" 
+                                <MetricCard
+                                    title="Follow-ups Answered"
                                     icon="🗣️"
-                                    score={evaluationData.metrics.followUps} 
-                                    desc="How well did you handle complex follow-ups?" 
+                                    score={evaluationData.metrics.followUps}
+                                    desc="How well did you handle complex follow-ups?"
                                 />
-                                <MetricCard 
-                                    title="Code Creativity & Speed" 
-                                    icon="⚡"
-                                    score={evaluationData.metrics.creativityAndSpeed} 
-                                    desc="Time to AC and code elegance." 
+                                <MetricCard
+                                    title="Communication"
+                                    icon="💬"
+                                    score={evaluationData.metrics.communication}
+                                    desc="Did you explain your thought process clearly?"
                                 />
                             </div>
 
@@ -112,6 +135,20 @@ const EvaluationModal = ({ isOpen, evaluationData, isGrading, problemId, submiss
     );
 };
 
+// Neutral tags describe context (e.g. session ended before a metric was relevant) rather than
+// a judged outcome, so they must not render as a failing/red badge.
+const isNeutralTag = (score) =>
+    score.includes('Not Applicable') || score.includes('No Code Submitted') || score.includes('Not Asked');
+
+const isPositiveTag = (score) =>
+    score.includes('Excellent') || score.includes('Yes') ||
+    score.includes('Confirmed Understanding') || score.includes('Optimal') ||
+    score.includes('Independent');
+
+const isMixedTag = (score) =>
+    score.includes('Good') || score.includes('Partial') || score.includes('Minimal') ||
+    score.includes('Moderate') || score.includes('Sub-optimal') || score.includes('Proposed Verbally');
+
 // Helper Component for the Grid
 const MetricCard = ({ title, icon, score, desc }) => (
     <div className="bg-gray-800/50 p-4 rounded-lg border border-gray-700 flex items-start space-x-3">
@@ -119,16 +156,30 @@ const MetricCard = ({ title, icon, score, desc }) => (
         <div>
             <h4 className="text-gray-200 font-semibold text-sm">{title}</h4>
             <p className="text-gray-400 text-xs mt-1 mb-2">{desc}</p>
-            {/* Displaying a visual badge based on the score (e.g., 1-5, or Excellent/Good/Poor) */}
+            {/* Displaying a visual badge based on the tag returned by the grader */}
             <span className={`text-xs font-bold px-2 py-1 rounded ${!score ? 'bg-gray-700 text-gray-300' :
-                score.includes('Excellent') || score.includes('Yes') ? 'bg-green-900/50 text-green-400' :
-                score.includes('Good') || score.includes('Partial') ? 'bg-yellow-900/50 text-yellow-400' :
+                isNeutralTag(score) ? 'bg-gray-700 text-gray-300' :
+                isPositiveTag(score) ? 'bg-green-900/50 text-green-400' :
+                isMixedTag(score) ? 'bg-yellow-900/50 text-yellow-400' :
                 'bg-red-900/50 text-red-400'
             }`}>
                 {score || 'N/A'}
             </span>
         </div>
     </div>
+);
+
+// Badge summarizing how/why the session ended, shown alongside the executive summary so an
+// early end (e.g. candidate confirmed understanding, ran out of time) reads
+// differently from a disengaged one at a glance.
+const SessionOutcomeBadge = ({ outcome }) => (
+    <span className={`inline-block text-xs font-bold px-2 py-1 rounded ${
+        outcome.includes('Disengaged') ? 'bg-red-900/50 text-red-400' :
+        outcome.includes('Completed') ? 'bg-green-900/50 text-green-400' :
+        'bg-yellow-900/50 text-yellow-400'
+    }`}>
+        {outcome}
+    </span>
 );
 
 export default EvaluationModal;

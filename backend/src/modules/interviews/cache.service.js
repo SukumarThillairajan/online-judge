@@ -104,9 +104,9 @@ export const clearChatHistory = async (sessionId) => {
 const generateRedisCodeKey = (sessionId) => `interview:code:${sessionId}`;
 
 /**
- * Fetches the last autosaved editor state (code + language) from Redis.
+ * Fetches the last autosaved editor state (per-language code map + active language) from Redis.
  * @param {string} sessionId - The unique identifier for the interview session.
- * @returns {Promise<{code: string, language: string}|null>}
+ * @returns {Promise<{codeByLanguage: Object<string, string>, language: string}|null>}
  */
 export const getEditorState = async (sessionId) => {
     if (!sessionId) {
@@ -127,22 +127,23 @@ export const getEditorState = async (sessionId) => {
 };
 
 /**
- * Autosaves the candidate's current editor contents to Redis, so a page reload can
- * restore exactly what they were typing, not just the chat transcript.
+ * Autosaves the candidate's current per-language editor contents to Redis, so a page reload
+ * can restore exactly what they were typing in EVERY language, not just the active one, and
+ * not just the chat transcript.
  * @param {string} sessionId - The unique identifier for the interview session.
- * @param {string} code - The live contents of the Monaco editor.
- * @param {string} language - The currently selected language.
+ * @param {Object<string, string>} codeByLanguage - Map of language -> that language's live editor contents.
+ * @param {string} language - The currently selected/active language.
  */
-export const saveEditorState = async (sessionId, code, language) => {
-    if (!sessionId || typeof code !== "string" || !language) {
-        console.error("saveEditorState called with missing parameters.", { sessionId, hasCode: typeof code === "string", language });
+export const saveEditorState = async (sessionId, codeByLanguage, language) => {
+    if (!sessionId || typeof codeByLanguage !== "object" || codeByLanguage === null || !language) {
+        console.error("saveEditorState called with missing parameters.", { sessionId, hasCodeByLanguage: typeof codeByLanguage === "object" && codeByLanguage !== null, language });
         return;
     }
 
     const key = generateRedisCodeKey(sessionId);
 
     try {
-        await redisConnection.set(key, JSON.stringify({ code, language }), "EX", INTERVIEW_TTL);
+        await redisConnection.set(key, JSON.stringify({ codeByLanguage, language }), "EX", INTERVIEW_TTL);
     }
     catch (error) {
         console.error(`Error saving editor state for sessionId ${sessionId}:`, error);

@@ -71,27 +71,29 @@ export const evaluateInterview = async (chatHistory, problem, finalCode, languag
         Calculate the \`total_score\` strictly using this 4-pillar rubric:
 
         1. Data Structures & Algorithms (25 Points)
-        - Did they find the optimal approach? 
-        - Did they correctly analyze Time and Space Complexity?
-        - Deduct points for brute-force solutions or incorrect Big-O analysis.
+        - Did they find the optimal approach? This can be credited from a clearly-articulated VERBAL approach in the transcript, even if it was never coded.
+        - Did they correctly analyze Time Complexity AND Space Complexity as two separate, distinct assessments?
+        - Deduct points for brute-force solutions or incorrect Big-O analysis (time or space).
 
         2. Code Quality & Edge Cases (25 Points)
         - Is the code clean, readable, and properly formatted?
         - Did they identify and handle edge cases (empty inputs, negative numbers, bounds)?
         - Deduct points for syntax errors, messy variable names, or missing edge cases.
+        - If FINAL CODE is empty, blank, or just a template, this pillar scores 0/25 — there is no code to grade. This does NOT affect pillars 1 or 3 below.
 
         3. Communication & Discovery (25 Points)
         - Did they explicitly ask about Constraints and Edge Cases BEFORE coding? (Reward this heavily).
-        - Did they dry-run their logic? 
+        - Did they dry-run their logic verbally?
         - Did they explain their thought process clearly?
+        - This pillar is graded entirely from the transcript and is fully scoreable even if no code was ever written.
 
         4. Problem Solving & Speed (25 Points)
         - How independently did they solve it? (Deduct points for every hint requested).
         - Did they answer the follow-up questions accurately?
-        - How fast did they reach the Accepted solution?
+        - How fast did they reach the Accepted solution? If no code was submitted, there is no "Accepted solution" — score this specific speed sub-component as 0, but still grade hint-independence and follow-up-handling on their own merits from the transcript.
 
         ### OUTPUT FORMAT
-        You MUST return your evaluation strictly as a valid JSON object. Do not include markdown formatting like \`\`\`json. 
+        You MUST return your evaluation strictly as a valid JSON object. Do not include markdown formatting like \`\`\`json.
 
         {
         "total_score": <Integer 0-100 calculated from the rubric>,
@@ -99,20 +101,25 @@ export const evaluateInterview = async (chatHistory, problem, finalCode, languag
         "strengths": ["List 1-3 specific strong points"],
         "weaknesses": ["List 1-3 specific areas for improvement"],
         "metrics": {
-            "askedConstraints": "<'Excellent', 'Good', 'Poor'>",
-            "firstApproach": "<'Optimal', 'Sub-optimal', 'Brute Force', 'None'>",
-            "timeComplexity": "<'Excellent', 'Good', 'Partial', 'Poor'>",
-            "edgeCases": "<'Excellent', 'Partial', 'Poor'>",
-            "hintUsage": "<'Independent (0 hints)', 'Minimal (1-2 hints)', 'Heavy Reliance'>",
-            "followUps": "<'Excellent', 'Good', 'Poor', 'Not Asked'>",
-            "codeQuality": "<'Excellent', 'Good', 'Messy', 'Poor'>",
-            "communication": "<'Excellent', 'Good', 'Poor'>"
+            "sessionOutcome": "<'Completed - Solution Submitted', 'Completed - Partial/Incomplete Solution', 'Ended Early - Confirmed Understanding, Time-Constrained', 'Ended Early - Actively Reasoning, No Code Yet', 'Ended Early - Stuck, Repeated Help Requests', 'Ended Early - Disengaged / Unresponsive', 'Timed Out - In Progress', 'Timed Out - No Meaningful Engagement', 'Unprofessional Behavior Detected'>",
+            "askedConstraints": "<'Excellent (Proactive & Thorough)', 'Good', 'Poor (Didn't Clarify Constraints)', 'Not Applicable (Session Ended Before Discussion Phase)'>",
+            "firstApproach": "<'Optimal', 'Sub-optimal but Valid', 'Brute Force', 'Proposed Verbally, Not Yet Coded', 'None Reached'>",
+            "timeComplexity": "<'Excellent', 'Good', 'Partial', 'Poor', 'Not Applicable (No Code Submitted)'>",
+            "spaceComplexity": "<'Excellent', 'Good', 'Partial', 'Poor', 'Not Applicable (No Code Submitted)'>",
+            "edgeCases": "<'Excellent', 'Good', 'Partial', 'Poor', 'Not Applicable (No Code Submitted)'>",
+            "hintUsage": "<'Independent (0 Hints Requested or Given)', 'Minimal (1-2 Hints)', 'Moderate (3-4 Hints)', 'Heavy Reliance (5+ Hints)', 'Not Applicable (Session Ended Before Hints Were Relevant)'>",
+            "followUps": "<'Excellent', 'Good', 'Poor', 'Not Asked by Interviewer', 'Not Applicable (Session Ended Before Follow-ups)'>",
+            "codeQuality": "<'Excellent', 'Good', 'Messy', 'Poor', 'No Code Submitted'>",
+            "communication": "<'Excellent (Clear & Proactive)', 'Good', 'Poor', 'Disengaged / Minimal Interaction'>"
         }
         }
 
         ### CRITICAL RULES:
-        - If the FINAL CODE is empty, blank, or just a template, the total_score MUST be 0.
-        - If the candidate hallucinates or gives a completely irrelevant answer, score heavily negatively.
+        - If the FINAL CODE is empty, blank, or just a template, do NOT zero out the whole total_score. Instead: award 0/25 for pillar 2 (Code Quality & Edge Cases) and 0 for the "speed to Accepted" sub-component of pillar 4, as specified above — but still grade pillars 1 and 3, and the non-speed parts of pillar 4, honestly from the transcript. total_score is the sum of what each pillar actually earns under this rule; it is not a fixed value. A candidate with no code but a correct, well-reasoned verbal approach and strong communication should land meaningfully above 0 — a candidate with no code AND weak/absent verbal engagement should still land near 0.
+        - timeComplexity and spaceComplexity must be graded from whatever complexity reasoning the candidate gave verbally in the transcript, even without code. Only use "Not Applicable (No Code Submitted)" for either if the candidate never discussed that complexity at all (neither verbally nor in code).
+        - Every individual tag inside "metrics" MUST be justified strictly by direct evidence in the transcript, independent of total_score. A low total_score does NOT mean every metric should default to its worst-case tag. Example: a candidate who asks excellent clarifying questions, clearly explains their approach, and correctly reasons through time/space complexity, but runs out of time before writing code, should still get an accurate "Excellent"/"Confirmed Understanding..." on askedConstraints, communication, timeComplexity, and spaceComplexity — while codeQuality and edgeCases correctly reflect "No Code Submitted" / "Not Applicable (No Code Submitted)". Do not let a low score bleed into unrelated tags.
+        - Only select an hintUsage tag if the transcript literally contains hint requests from the candidate or hints given by the interviewer. Never infer hint usage from a low score, missing code, or a short session.
+        - If the candidate hallucinates or gives a completely irrelevant answer or question, score heavily negatively.
         - Base your evaluation SOLELY on the provided transcript and code.
     `;
 

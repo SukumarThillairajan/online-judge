@@ -6,19 +6,11 @@ const CodeEditor = ({ language, setLanguage, code, setCode, onRun, onSubmit, isE
   const monacoRef = useRef(null);
   const decorationsRef = useRef([]); // Tracks active highlights so we can clear them
 
-  // Standard boilerplate templates for when a user switches languages
-  const defaultTemplates = {
-    javascript: 'console.log("Hello World!");',
-    python: 'print("Hello World!")',
-    c: '#include <stdio.h>\n\nint main() {\n    printf("Hello World!\\n");\n    return 0;\n}',
-    cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}',
-    java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}'
-  };
-
+  // Switching languages only swaps which language is active -- Arena keeps a per-language
+  // code map and derives `code` from it, so the previous language's progress is preserved
+  // rather than overwritten here.
   const handleLanguageChange = (e) => {
-    const newLang = e.target.value;
-    setLanguage(newLang);
-    setCode(defaultTemplates[newLang] || '');
+    setLanguage(e.target.value);
   };
 
   const handleEditorDidMount = (editor, monaco) => {

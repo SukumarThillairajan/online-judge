@@ -45,14 +45,14 @@ export const startInterview = async (req, res) => {
 
         if (existingSession && !isStale) {
             const chatHistory = await getChatHistory(existingSession.sessionId);
-            // The editor's contents are autosaved separately from the chat transcript, so a reload restores the candidate's code, not just the chat.
+            // The editor's contents are autosaved separately from the chat transcript, so a reload restores the candidate's code in every language they'd touched, not just the chat.
             const editorState = await getEditorState(existingSession.sessionId);
             return res.status(200).json({
                 success: true,
                 sessionId: existingSession.sessionId,
                 startedAt: existingSession.startedAt,
                 chatHistory,
-                code: editorState?.code ?? null,
+                codeByLanguage: editorState?.codeByLanguage ?? null,
                 language: editorState?.language ?? null,
                 message: "Resumed existing interview session."
             });
@@ -185,16 +185,17 @@ export const streamInterviewChat = async (req, res) => {
 };
 
 /**
- * Autosaves the candidate's live editor contents (code + language) so that a page reload
- * or dropped connection can restore exactly what they were working on, not just the chat
- * transcript. Called by the frontend on a debounce, not on every keystroke.
+ * Autosaves the candidate's live per-language editor contents (codeByLanguage + active
+ * language) so that a page reload or dropped connection can restore exactly what they were
+ * working on in every language, not just the chat transcript. Called by the frontend on a
+ * debounce, not on every keystroke.
  */
 export const saveCode = async (req, res) => {
     try {
         const userId = req.user.userId;
-        const { sessionId, problemId, code, language } = req.body;
-        if (!sessionId || !problemId || typeof code !== "string" || !language) {
-            return res.status(400).json({ error: "Missing required fields: sessionId, problemId, code, or language." });
+        const { sessionId, problemId, codeByLanguage, language } = req.body;
+        if (!sessionId || !problemId || typeof codeByLanguage !== "object" || codeByLanguage === null || !language) {
+            return res.status(400).json({ error: "Missing required fields: sessionId, problemId, codeByLanguage, or language." });
         }
 
         const session = await db.query.interviewSessions.findFirst({
@@ -208,7 +209,7 @@ export const saveCode = async (req, res) => {
             return res.status(404).json({ error: "Interview session not found." });
         }
 
-        await saveEditorState(sessionId, code, language);
+        await saveEditorState(sessionId, codeByLanguage, language);
 
         return res.status(200).json({ success: true });
     }

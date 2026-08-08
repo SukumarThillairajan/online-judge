@@ -28,7 +28,8 @@ app.use(express.json()); // Middleware to parse incoming JSON payloads. Without 
 app.use(cookieParser());
 // Adding all the trusted frontends to this array
 const allowedOrigins = [
-  "http://localhost:3000", // For my local development
+  "http://localhost:3000", // React's default dev server port, for local development
+  "http://localhost:5173", // Vite's default dev server port, for local development
   "https://online-judge-sable.vercel.app",
   "https://online-judge.vercel.app"
 ];
@@ -37,10 +38,10 @@ app.use(cors({
         // Allowing requests with no origin like Postman or curl
         if (!origin) return callback(null, true);
 
-        // // Allowing requests from the allowed origins (exact matches)
-        // if (allowedOrigins.indexOf(origin) !== -1) {
-        //     return callback(null, true);
-        // }
+        // Allowing requests from the allowed origins (exact matches)
+        if (allowedOrigins.indexOf(origin) !== -1) {
+            return callback(null, true);
+        }
 
         // Allowing URLs of the form https://online-judge-[ANYTHING].vercel.app (for preview deployments)
         if (/^https:\/\/online-judge-[a-zA-Z0-9-]+\.vercel\.app$/.test(origin)) {

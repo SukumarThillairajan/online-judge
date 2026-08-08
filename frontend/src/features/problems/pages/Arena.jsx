@@ -42,6 +42,17 @@ const extractErrorLine = (errorDetails, language) => {
   }
 };
 
+// Boilerplate shown for a language the candidate hasn't typed anything into yet. Lives here
+// (not in CodeEditor) because Arena needs it to derive the displayed `code` for whichever
+// language is active, independent of the actual per-language progress map.
+const DEFAULT_TEMPLATES = {
+  javascript: 'console.log("Hello World!");',
+  python: 'print("Hello World!")',
+  c: '#include <stdio.h>\n\nint main() {\n    printf("Hello World!\\n");\n    return 0;\n}',
+  cpp: '#include <iostream>\nusing namespace std;\n\nint main() {\n    cout << "Hello World!" << endl;\n    return 0;\n}',
+  java: 'public class Main {\n    public static void main(String[] args) {\n        System.out.println("Hello World!");\n    }\n}'
+};
+
 const Arena = () => {
   const { id: problemId } = useParams();
 
@@ -58,7 +69,11 @@ const Arena = () => {
 
   // --- Editor & Execution State ---
   const [language, setLanguage] = useState('javascript');
-  const [code, setCode] = useState('// Start your code here...');
+  // Progress is kept per-language so switching the dropdown never discards what was typed in
+  // another language. Only languages the candidate has actually edited get an entry here --
+  // an untouched language falls back to its boilerplate template below.
+  const [codeByLanguage, setCodeByLanguage] = useState({});
+  const code = codeByLanguage[language] ?? DEFAULT_TEMPLATES[language] ?? '';
   const [customInput, setCustomInput] = useState('');
   const [isEvaluating, setIsEvaluating] = useState(false);
   const [verdict, setVerdict] = useState(null);
@@ -105,12 +120,12 @@ const Arena = () => {
         setSessionStartedAt(payload.startedAt || new Date().toISOString());
         setInitialChatHistory(Array.isArray(payload.chatHistory) ? payload.chatHistory : []);
         // Restore the candidate's last autosaved editor contents on resume, so a reload
-        // brings back their code, not just the chat transcript.
-        if (payload.code) {
-          setCode(payload.code);
-          if (payload.language) {
-            setLanguage(payload.language);
-          }
+        // brings back their code in every language they'd touched, not just the chat transcript.
+        if (payload.codeByLanguage && typeof payload.codeByLanguage === 'object') {
+          setCodeByLanguage(payload.codeByLanguage);
+        }
+        if (payload.language) {
+          setLanguage(payload.language);
         }
         setIsInterviewActive(true);
       } catch (err) {
@@ -132,10 +147,11 @@ const Arena = () => {
     setLastActivityTime(Date.now());
   };
 
-  // Editor Autosave: debounce writes of the live code + language to the backend so a
-  // reload (or the /start resume path) can restore exactly what the candidate was typing,
-  // not just the chat transcript. Debounced rather than saved on every keystroke to avoid
-  // hammering the API while the candidate is actively typing.
+  // Editor Autosave: debounce writes of the live per-language code map + active language to
+  // the backend so a reload (or the /start resume path) can restore exactly what the candidate
+  // was typing in EVERY language, not just the one they had open when they left, and not just
+  // the chat transcript. Debounced rather than saved on every keystroke to avoid hammering the
+  // API while the candidate is actively typing.
   useEffect(() => {
     if (!isInterviewActive || !sessionId) return;
 
@@ -144,12 +160,12 @@ const Arena = () => {
     }
 
     codeSaveTimerRef.current = setTimeout(() => {
-      apiClient.post('/api/interviews/code', { sessionId, problemId, code, language })
+      apiClient.post('/api/interviews/code', { sessionId, problemId, codeByLanguage, language })
         .catch((err) => console.error("Failed to autosave editor state", err));
     }, 2000); // 2 seconds after the candidate stops typing or changes language
 
     return () => clearTimeout(codeSaveTimerRef.current);
-  }, [code, language, isInterviewActive, sessionId, problemId]);
+  }, [codeByLanguage, language, isInterviewActive, sessionId, problemId]);
 
   // Inactivity Ghost Prompt: If the user hasn't typed for 5 minutes, check in.
   useEffect(() => {
@@ -493,7 +509,7 @@ const Arena = () => {
               setLanguage={setLanguage}
               code={code}
               setCode={(newCode) => {
-                setCode(newCode);
+                setCodeByLanguage(prev => ({ ...prev, [language]: newCode }));
                 handleUserActivity(); // Signal activity on code change
                 if (errorLine) setErrorLine(null); // Clear the highlight once they start editing
               }}
